@@ -23,3 +23,7 @@ __ https://github.com/h5py/h5py
 * xrray__ 
 
 __ https://github.com/pydata/xarray
+
+* pandas__ 
+
+__ https://github.com/pandas-dev/pandas
