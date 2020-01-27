@@ -290,31 +290,31 @@ class GPMDPR():
         month = self.hdf['MS']['ScanTime']['Month'][:]
         ind = np.where(month < 10)
         month = np.asarray(month,dtype=str)
-        month = numpy.char.rjust(month, 2, fillchar='0')
+        month = np.char.rjust(month, 2, fillchar='0')
         month = list(month)
 
         day = self.hdf['MS']['ScanTime']['DayOfMonth'][:]
         ind = np.where(day < 10)
         day = np.asarray(day,dtype=str)
-        day = numpy.char.rjust(day, 2, fillchar='0')
+        day = np.char.rjust(day, 2, fillchar='0')
         day = list(day)
 
         hour = self.hdf['MS']['ScanTime']['Hour'][:]
         ind = np.where(hour < 10)
         hour = np.asarray(hour,dtype=str)
-        hour = numpy.char.rjust(hour, 2, fillchar='0')
+        hour = np.char.rjust(hour, 2, fillchar='0')
         hour = list(hour)
 
         minute = self.hdf['MS']['ScanTime']['Minute'][:]
         ind = np.where(minute < 10)
         minute = np.asarray(minute,dtype=str)
-        minute = numpy.char.rjust(minute, 2, fillchar='0')
+        minute = np.char.rjust(minute, 2, fillchar='0')
         minute = list(minute)
 
         second = self.hdf['MS']['ScanTime']['Second'][:]
         ind = np.where(second < 10)
         second = np.asarray(second,dtype=str)
-        second = numpy.char.rjust(second, 2, fillchar='0')
+        second = np.char.rjust(second, 2, fillchar='0')
         second = list(second)
 
         datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
