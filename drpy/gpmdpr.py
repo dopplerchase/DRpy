@@ -1,9 +1,3 @@
-from __future__ import absolute_import
-
-import xarray as xr 
-import h5py 
-import numpy as np
-
 class GPMDPR():
 
     """
@@ -22,7 +16,7 @@ class GPMDPR():
         self.do_read = do_read
         
     def read(self):
-        self.hdf = h5py.File(self.filename,'r')
+        self.hdf = h5py.File(filename,'r')
         
         ###set some global parameters
         
