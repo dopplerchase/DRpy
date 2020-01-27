@@ -11,7 +11,8 @@ setup(name='DRpy',
       author='Randy J. Chase',
       author_email='randy.chase12@gmail.com',
       url='https://github.com/dopplerchase/DRpy',
-      packages=['DRpy'],
+      packages=['drpy'],
       long_description = long_description,
-      license = 'MIT'
+      license = 'MIT',
+      requires = ['h5py', 'xarray']
      )
