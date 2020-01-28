@@ -6,17 +6,7 @@ import numpy as np
 import pandas as pd
 
 class GPMDPR():
-
-    """
-    Author: Randy J. Chase
-
-    This object is intended to help with the efficient processing of GPM-DPR radar files. Currently, xarray cannot
-    read the files directly. So here is an attempt to do so. Once in xarray format, the effcient search functions 
-    can be used. 
-    
-    Currently, I do not have this function pass all variables through. Just the files I need to work with.
-
-    """
+    """Author: Randy J. Chase. This object is intended to help with the efficient processing of GPM-DPR radar files. Currently, xarray cannot read the files directly. So here is an attempt to do so. Once in xarray format, the effcient search functions can be used. Currently, I do not have this function pass all variables through. Just the files I need to work with."""
 
     def __init__(self,filename=[],boundingbox=None): 
         self.filename = filename
@@ -24,6 +14,8 @@ class GPMDPR():
         self.datestr=None
         self.height= None
         self.corners = boundingbox
+        self.retrieval_flag = 0
+        self.interp_flag = 0
         
     def read(self):
         self.hdf = h5py.File(self.filename,'r')
@@ -408,8 +400,10 @@ class GPMDPR():
             da.attrs['standard_name'] = 'retrieved Dm from the NN (Chase et al. 2020)'
             da = da.where(da > 0.)
             self.xrds['Dm'] = da
+            
+            self.retrieval_flag = 1
         
-    def get_merra(self):
+    def get_merra(self,interp=True):
         
         """ 
         
@@ -449,12 +443,105 @@ class GPMDPR():
         #select the closest profile to the lat, lon, time
         sounding = merra.sel(lon=self.xrds.lons,lat=self.xrds.lats,time=self.xrds.time,method='nearest')
 
-        #merge in the data 
-        self.xrds['T'] = sounding.T
-        self.xrds['U'] = sounding.U
-        self.xrds['V'] = sounding.V
-        self.xrds['QV'] = sounding.QV
-        self.xrds['H'] = sounding.H
+        
+        self.sounding = sounding
+        
+        if interp:
+            self.interp_MERRA(keyname='T')
+            self.interp_MERRA(keyname='U')
+            self.interp_MERRA(keyname='V')
+            self.interp_MERRA(keyname='QV')
+            self.interp_flag = 1
             
         merra.close()
-        sounding.close()
+        
+    def interp_MERRA(self,keyname=None):
+        
+        """ 
+        
+        This interpolates the MERRA two variables to the same veritcal levels as the GPM-DPR
+        
+        NOTE: I am not sure this is optimized! Not very fast..., but if you want you can turn it off
+        
+        """
+
+        H_Merra = self.sounding.H.values
+        H_gpm = self.xrds.alt.values
+        new_variable = np.zeros(H_gpm.shape)
+        for i in self.sounding.along_track.values:
+            for j in self.sounding.cross_track.values:
+                #fit func
+                da = xr.DataArray(self.sounding[keyname].values[i,j,:], [('height', H_Merra[i,j,:]/1000)])
+                da = da.interp(height=H_gpm[i,j,:])
+                new_variable[i,j,:] = da.values
+
+
+        da = xr.DataArray(new_variable, dims=['along_track', 'cross_track','range'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+
+        da.attrs['units'] = self.sounding[keyname].units
+        da.attrs['standard_name'] = 'Interpolated ' + self.sounding[keyname].standard_name + ' to GPM height coord'
+        self.xrds[keyname] = da
+        
+    def extract_nearsurf(self):
+        keeper = self.xrds.range.values
+        keeper = np.reshape(keeper,[1,keeper.shape[0]])
+        keeper = np.tile(keeper,(25,1))
+        keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+        keeper = np.tile(keeper,(self.xrds.NSKu.values.shape[0],1,1))
+        keeper[np.isnan(self.xrds.NSKu.values)] = -9999
+
+        inds_to_pick = np.argmax(keeper,axis=2)
+        dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+
+        #note, for all nan columns, it will say its 0, or the top of the GPM index, which should alway be nan anyway
+        for i in np.arange(0,dummy_matrix.shape[0]):
+            for j in np.arange(0,dummy_matrix.shape[1]):
+                dummy_matrix[i,j,inds_to_pick[i,j]] = 1
+
+        self.lowest_gate_index = np.ma.asarray(dummy_matrix,dtype=int)
+
+        self.grab_variable(keyname='NSKu')
+        self.grab_variable(keyname='NSKu_c')
+        self.grab_variable(keyname='MSKa')
+        self.grab_variable(keyname='MSKa_c')
+        self.grab_variable(keyname='R')
+        self.grab_variable(keyname='Dm_dpr')
+        self.grab_variable(keyname='alt')
+        
+        if self.retrieval_flag == 1:
+            self.grab_variable(keyname='Dm')
+
+        if self.interp_flag == 1:
+            self.grab_variable(keyname='T')
+            self.grab_variable(keyname='U')
+            self.grab_variable(keyname='V')
+            self.grab_variable(keyname='QV')
+        
+
+    def grab_variable(self,keyname=None):
+
+        if keyname is None:
+            print('please supply keyname')
+        else:
+            variable = np.zeros([self.xrds.along_track.shape[0],self.xrds.cross_track.values.shape[0]])
+            ind = np.where(self.lowest_gate_index == 0)
+            variable[ind[0],ind[1]] = np.nan
+            ind = np.where(self.lowest_gate_index == 1)
+            variable[ind[0],ind[1]] = self.xrds[keyname].values[ind[0],ind[1],ind[2]]
+            da = xr.DataArray(variable, dims=['along_track', 'cross_track'],
+                       coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                               'lats': (['along_track','cross_track'],self.xrds.lons),
+                               'time': (['along_track','cross_track'],self.xrds.time)})
+            da = da.where(self.xrds.flagSurfaceSnow == 1)
+            if keyname=='alt':
+                da.attrs['units'] = 'km'
+                da.attrs['standard_name'] = 'altitude of the near-surface bin'
+                self.xrds[keyname+'_nearSurf'] = da
+            else:
+                da.attrs['units'] = self.xrds[keyname].units
+                da.attrs['standard_name'] = 'near-surface' + self.xrds[keyname].standard_name
+                self.xrds[keyname+'_nearSurf'] = da
