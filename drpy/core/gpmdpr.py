@@ -18,12 +18,12 @@ class GPMDPR():
 
     """
 
-    def __init__(self,filename=[],do_read =False): 
+    def __init__(self,filename=[],boundingbox=None): 
         self.filename = filename
-        self.do_read = do_read
         self.xrds = None
         self.datestr=None
         self.height= None
+        self.corners = boundingbox
         
     def read(self):
         self.hdf = h5py.File(self.filename,'r')
@@ -109,7 +109,7 @@ class GPMDPR():
 
         #reshape it into the same shape as the radar 
         self.height = prh[:,12:37,:]
-    
+        
     def toxr(self,snow=True,clutter=True,echotop=True):
     
         """
@@ -118,160 +118,190 @@ class GPMDPR():
         
 
         """
+        #set the fillflag to false. 
         
-        lons = self.hdf['NS']['Longitude'][:,12:37]
-        lats = self.hdf['NS']['Latitude'][:,12:37]
-        
-        if self.datestr is None:
-            self.parse_dtime()
+        self.killflag = False
+        #first thing first, check to make sure there are points in the bounding box.
+        #cut points to make sure there are points in your box.This should save you time. 
+        if self.corners is not None:
             
-        if self.height is None: 
-            self.calcAltASL()
+            #load data out of hdf
+            lons = self.hdf['NS']['Longitude'][:,12:37]
+            lats = self.hdf['NS']['Latitude'][:,12:37]
+            #shove it into a dataarray
+            da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
+                           coords={'lons': (['along_track','cross_track'],lons),
+                                   'lats': (['along_track','cross_track'],lats)})
+            #cut the the edges of the box
+            da = da.where((da.lons >= self.corners[0]) & (da.lons <= self.corners[1]) & (da.lats >= self.corners[2])  & (da.lats <= self.corners[3]),drop=False)
+            #if you want only snowing cases, do the following
+            if snow:
+                da = da.where(da == 1,drop=False)
+            #okay, now drop nans
+            da = da.dropna(dim='along_track',how='all')
+            #if there are no profiles, the len is 0, and we will set the kill flag
+            if da.along_track.shape[0]==0:
+                self.killflag = True
             
-        da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr)})
-        da.fillna(value=255)
-        da.attrs['units'] = 'none'
-        da.attrs['standard_name'] = 'experimental flag to diagnose snow at surface'
-        
-        #make xr dataset
-        self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
-        #
-        
-        if clutter:
-            self.get_highest_clutter_bin()
-            da = xr.DataArray(self.dummy, dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr)})
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'flag to remove ground clutter'
-            self.xrds['clutter'] = da
-            
-        da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrectedNearSurface'][:,12:37], dims=['along_track', 'cross_track'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr)})
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'near surface Ku'
-        da = da.where(da >= 12)
-        self.xrds['nearsurfaceKu'] = da
+        #if there were no points it will not waste time with processing or io stuff    
+        if self.killflag:
+            pass
+        else:          
+            if self.datestr is None:
+                self.parse_dtime()
 
-        
-        da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrectedNearSurface'][:,:], dims=['along_track', 'cross_track'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats)})
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'near surface Ka'
-        da = da.where(da >= 15)
-        self.xrds['nearsurfaceKa'] = da
-        
-        da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrected'][:,12:37,:], dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr),
-                                           'alt':(['along_track', 'cross_track','range'],self.height)})
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'corrected KuPR'
-        if clutter:
-            da = da.where(self.xrds.clutter==0)
-        da = da.where(da >= 12)
-        self.xrds['NSKu_c'] = da
-        
-        da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrected'][:,:,:], dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr),
-                                           'alt':(['along_track', 'cross_track','range'],self.height)})
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'corrected KaPR, MS scan'
-        if clutter:
-            da = da.where(self.xrds.clutter==0)
-        da = da.where(da >= 15)
-        self.xrds['MSKa_c'] = da
-        
-        if echotop:
-            self.echotop()
-            da = xr.DataArray(self.dummy2, dims=['along_track', 'cross_track','range'],
+            if self.height is None: 
+                self.calcAltASL()
+
+            da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
                                                'lats': (['along_track','cross_track'],lats),
                                                'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=255)
             da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'flag to remove noise outside cloud/precip top'
-            self.xrds['echotop'] = da
-        
-        da = xr.DataArray(self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:], dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr),
-                                           'alt':(['along_track', 'cross_track','range'],self.height)})
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'measured KuPR'
-        if clutter:
-            da = da.where(self.xrds.clutter==0)
-        if echotop:
-            da = da.where(self.xrds.echotop==0)
-        da = da.where(da >= 12)
-        self.xrds['NSKu'] = da
-        
-        da = xr.DataArray(self.hdf['MS']['PRE']['zFactorMeasured'][:,:,:], dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr),
-                                           'alt':(['along_track', 'cross_track','range'],self.height)})
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'measured KaPR, MS scan'
-        if clutter:
-            da = da.where(self.xrds.clutter==0)
-        if echotop:
-            da = da.where(self.xrds.echotop==0)
-        da = da.where(da >= 15)
-        self.xrds['MSKa'] = da
-        
+            da.attrs['standard_name'] = 'experimental flag to diagnose snow at surface'
 
-        
-        da = xr.DataArray(self.hdf['NS']['SLV']['precipRate'][:,12:37,:], dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr),
-                                           'alt':(['along_track', 'cross_track','range'],self.height)})
-        da.attrs['units'] = 'mm hr^-1'
-        da.attrs['standard_name'] = 'retrieved R, from DPR algo'
-        if clutter:
-            da = da.where(self.xrds.clutter==0)
-        if echotop:
-            da = da.where(self.xrds.echotop==0)
-        self.xrds['R'] = da
-        
-        da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,1], dims=['along_track', 'cross_track','range'],
-                                   coords={'lons': (['along_track','cross_track'],lons),
-                                           'lats': (['along_track','cross_track'],lats),
-                                           'time': (['along_track','cross_track'],self.datestr),
-                                           'alt':(['along_track', 'cross_track','range'],self.height)})
-        da.attrs['units'] = 'mm'
-        da.attrs['standard_name'] = 'retrieved Dm, from DPR algo'
-        if clutter:
-            da = da.where(self.xrds.clutter==0)
-        if echotop:
-            da = da.where(self.xrds.echotop==0)
-        da = da.where(da >= 0)
-        self.xrds['Dm_dpr'] = da
-        
-        
-        if snow:
-            self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1,drop=False)
+            #make xr dataset
+            self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
+            #
+
+
+
+            if clutter:
+                self.get_highest_clutter_bin()
+                da = xr.DataArray(self.dummy, dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+                da.attrs['units'] = 'none'
+                da.attrs['standard_name'] = 'flag to remove ground clutter'
+                self.xrds['clutter'] = da
+
+            da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrectedNearSurface'][:,12:37], dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'near surface Ku'
+            da = da.where(da >= 12)
+            self.xrds['nearsurfaceKu'] = da
+
+
+            da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrectedNearSurface'][:,:], dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats)})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'near surface Ka'
+            da = da.where(da >= 15)
+            self.xrds['nearsurfaceKa'] = da
+
+            da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrected'][:,12:37,:], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'corrected KuPR'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            da = da.where(da >= 12)
+            self.xrds['NSKu_c'] = da
+
+            da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrected'][:,:,:], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'corrected KaPR, MS scan'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            da = da.where(da >= 15)
+            self.xrds['MSKa_c'] = da
+
+            if echotop:
+                self.echotop()
+                da = xr.DataArray(self.dummy2, dims=['along_track', 'cross_track','range'],
+                                           coords={'lons': (['along_track','cross_track'],lons),
+                                                   'lats': (['along_track','cross_track'],lats),
+                                                   'time': (['along_track','cross_track'],self.datestr)})
+                da.attrs['units'] = 'none'
+                da.attrs['standard_name'] = 'flag to remove noise outside cloud/precip top'
+                self.xrds['echotop'] = da
+
+            da = xr.DataArray(self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'measured KuPR'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            if echotop:
+                da = da.where(self.xrds.echotop==0)
+            da = da.where(da >= 12)
+            self.xrds['NSKu'] = da
+
+            da = xr.DataArray(self.hdf['MS']['PRE']['zFactorMeasured'][:,:,:], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'measured KaPR, MS scan'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            if echotop:
+                da = da.where(self.xrds.echotop==0)
+            da = da.where(da >= 15)
+            self.xrds['MSKa'] = da
+
+
+
+            da = xr.DataArray(self.hdf['NS']['SLV']['precipRate'][:,12:37,:], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'mm hr^-1'
+            da.attrs['standard_name'] = 'retrieved R, from DPR algo'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            if echotop:
+                da = da.where(self.xrds.echotop==0)
+            self.xrds['R'] = da
+
+            da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,1], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'mm'
+            da.attrs['standard_name'] = 'retrieved Dm, from DPR algo'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            if echotop:
+                da = da.where(self.xrds.echotop==0)
+            da = da.where(da >= 0)
+            self.xrds['Dm_dpr'] = da
+
+
+            if snow:
+                self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1,drop=False)
+                
+            if self.corners is not None:
+                self.setboxcoords()
             
             
          
-    def setboxcoords(self,corners=[]):
+    def setboxcoords(self):
         
-        if len(corners) > 0:
-            self.ll_lon = corners[0]
-            self.ur_lon = corners[1]
-            self.ll_lat = corners[2]
-            self.ur_lat = corners[3]
+        if len(self.corners) > 0:
+            self.ll_lon = self.corners[0]
+            self.ur_lon = self.corners[1]
+            self.ll_lat = self.corners[2]
+            self.ur_lat = self.corners[3]
             self.xrds = self.xrds.where((self.xrds.lons >= self.ll_lon) & (self.xrds.lons <= self.ur_lon) & (self.xrds.lats >= self.ll_lat)  & (self.xrds.lats <= self.ur_lat),drop=False)
         else:
             pass
@@ -290,31 +320,31 @@ class GPMDPR():
         month = self.hdf['MS']['ScanTime']['Month'][:]
         ind = np.where(month < 10)
         month = np.asarray(month,dtype=str)
-        month = np.char.rjust(month, 2, fillchar='0')
+        month = numpy.char.rjust(month, 2, fillchar='0')
         month = list(month)
 
         day = self.hdf['MS']['ScanTime']['DayOfMonth'][:]
         ind = np.where(day < 10)
         day = np.asarray(day,dtype=str)
-        day = np.char.rjust(day, 2, fillchar='0')
+        day = numpy.char.rjust(day, 2, fillchar='0')
         day = list(day)
 
         hour = self.hdf['MS']['ScanTime']['Hour'][:]
         ind = np.where(hour < 10)
         hour = np.asarray(hour,dtype=str)
-        hour = np.char.rjust(hour, 2, fillchar='0')
+        hour = numpy.char.rjust(hour, 2, fillchar='0')
         hour = list(hour)
 
         minute = self.hdf['MS']['ScanTime']['Minute'][:]
         ind = np.where(minute < 10)
         minute = np.asarray(minute,dtype=str)
-        minute = np.char.rjust(minute, 2, fillchar='0')
+        minute = numpy.char.rjust(minute, 2, fillchar='0')
         minute = list(minute)
 
         second = self.hdf['MS']['ScanTime']['Second'][:]
         ind = np.where(second < 10)
         second = np.asarray(second,dtype=str)
-        second = np.char.rjust(second, 2, fillchar='0')
+        second = numpy.char.rjust(second, 2, fillchar='0')
         second = list(second)
 
         datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
