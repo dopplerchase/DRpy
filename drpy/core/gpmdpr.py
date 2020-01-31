@@ -5,6 +5,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
+
+
 class GPMDPR():
     """Author: Randy J. Chase. This object is intended to help with the efficient processing of GPM-DPR radar files. Currently, xarray cannot read the files directly. So here is an attempt to do so. Once in xarray format, the effcient search functions can be used. Currently, I do not have this function pass all variables through. Just the files I need to work with."""
 
@@ -144,6 +146,11 @@ class GPMDPR():
 
             if self.height is None: 
                 self.calcAltASL()
+                
+            if self.corners is None:
+                #load data out of hdf
+                lons = self.hdf['NS']['Longitude'][:,12:37]
+                lats = self.hdf['NS']['Latitude'][:,12:37]
 
             da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
@@ -348,6 +355,14 @@ class GPMDPR():
     
     def run_retrieval(self,path_to_models=None):
         
+        import tensorflow as tf
+        import joblib
+        #supress warnings. skrews up my progress bar
+        def warn(*args, **kwargs):
+            pass
+        import warnings
+        warnings.warn = warn
+        
         if path_to_models is None:
             print('Please insert path to NN models')
         else:
@@ -545,3 +560,32 @@ class GPMDPR():
                 da.attrs['units'] = self.xrds[keyname].units
                 da.attrs['standard_name'] = 'near-surface' + self.xrds[keyname].standard_name
                 self.xrds[keyname+'_nearSurf'] = da
+                
+    def get_physcial_distance(self,reference_point = None):
+        """ 
+
+        This function uses pyproj to calcualte distances between lats and lons. 
+        reference_point is a list or array conisting of two entries, [Longitude,Latitude]
+
+        """
+
+        if reference_point is None and self.reference_point is None:
+            print('Error, no reference point found...please enter one')
+        else:
+            #this is envoke the pyproj package. Please note this must be an old version** < 2.0 
+            from pyproj import Proj
+            p = Proj(proj='aeqd', ellps='WGS84', datum='WGS84', lat_0=reference_point[1], lon_0=reference_point[0])
+            #double check to make sure this returns 0 meters
+            x,y = p(reference_point[0],reference_point[1])
+            if np.sqrt(x**2 + y**2) != 0:
+                'something isnt right with the projection. investigate'
+            else:
+                x,y = p(self.xrds.lons.values,self.xrds.lats.values)
+                da = xr.DataArray(np.sqrt(x**2 + y**2)/1000, dims=['along_track', 'cross_track'],
+                    coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                    'lats': (['along_track','cross_track'],self.xrds.lons),
+                    'time': (['along_track','cross_track'],self.xrds.time)})
+                da.attrs['units'] = 'km'
+                da.attrs['standard_name'] = 'distance, way of the crow (i.e. direct), to the reference point'
+                self.xrds['distance'] = da
+                
