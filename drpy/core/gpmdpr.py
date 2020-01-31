@@ -8,7 +8,18 @@ import pandas as pd
 
 
 class GPMDPR():
-    """Author: Randy J. Chase. This object is intended to help with the efficient processing of GPM-DPR radar files. Currently, xarray cannot read the files directly. So here is an attempt to do so. Once in xarray format, the effcient search functions can be used. Currently, I do not have this function pass all variables through. Just the files I need to work with."""
+    """
+    Author: Randy J. Chase. This class is intended to help with the efficient processing of GPM-DPR radar files. 
+    Currently, xarray cannot read NASA's HDF files directly (2A.GPM.DPR*). So here is an attempt to do so. 
+    Once in xarray format, the effcient search functions can be used. 
+    
+    **NOTE: Currently, I do not have this function pass all variables through (there is quite the list of them.
+    Maybe in the future I will generalize it to do so. But right now its a bit tedious to code up all the units and such
+    
+    Feel free to reach out to me on twitter (@dopplerchase) or email randyjc2@illinois.edu
+    
+    For your reference, please check out the ATBD: https://pps.gsfc.nasa.gov/GPMprelimdocs.html 
+    """
 
     def __init__(self,filename=[],boundingbox=None): 
         self.filename = filename
@@ -20,20 +31,24 @@ class GPMDPR():
         self.interp_flag = 0
         
     def read(self):
+        """
+        This method simply reads the HDF file and gives it to the class. 
+        
+        """
+        
         self.hdf = h5py.File(self.filename,'r')
         
         ###set some global parameters
-        
-        #whats the shape of the DPR files, mainly. 
+        #whats the common shape of the DPR files
         shape = self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:].shape
         self.along_track = np.arange(0,shape[0])
         self.cross_track = np.arange(0,shape[1])
         self.range = np.arange(0,shape[2])
         
     def get_highest_clutter_bin(self):
-
         """
-        This function makes us ground clutter conservative by supplying a clutter mask to apply to the fields 
+        This method makes us ground clutter conservative by supplying a clutter mask to apply to the fields.
+        It is based off the algorithim output of 'binClutterFreeBottom', which can be a bit conservative (~ 1km)
 
         """
 
@@ -59,6 +74,12 @@ class GPMDPR():
         self.dummy = np.ma.asarray(dummy_matrix,dtype=int)
         
     def echotop(self):
+        """
+        This method takes the already clutter filtered data for the corrected reflectivity and cuts the 
+        noisy uncorrected reflectivity to the same height. Again, the method is a bit conservative, but is 
+        a good place to start.
+        
+        """
         keeper = self.range
         keeper = np.reshape(keeper,[1,keeper.shape[0]])
         keeper = np.tile(keeper,(25,1))
@@ -75,12 +96,11 @@ class GPMDPR():
         self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
         
     def calcAltASL(self):
-        
         """
-        This function calculates the height of each radar gate above sea level. I am 
-        not 100% this is exactly correct. Please use at your own risk!
-        
-        This is derived from some old code for TRMM (e.g., Stephen Nesbitt)
+        This method calculates the height of each radar gate above sea level.
+        **I am not 100% this is exactly correct. Please use at your own risk! **
+        This is derived from some old code for TRMM (e.g., Stephen Nesbitt), but 
+        updated with the GPM-DPR geometry 
         
         """
 
@@ -104,16 +124,27 @@ class GPMDPR():
         #reshape it into the same shape as the radar 
         self.height = prh[:,12:37,:]
         
-    def toxr(self,snow=True,clutter=True,echotop=True):
-    
+    def toxr(self,ptype=None,clutter=True,echotop=True):
         """
+        This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
         
-        This function converts the hdf file to an xarray dataset. 
+        To save computational time, it does first check to see if you set a box of interest. 
+        Then it uses xarray effcient searching to make sure there are some profiles in that box. 
         
 
         """
-        #set the fillflag to false. 
+        #set the precip type of interest. If none, give back all data...
+        self.ptype=ptype
+        self.snow = False
+        self.precip = False
         
+
+        if (self.ptype=='precip') or (self.ptype=='Precip') or (self.ptype=='PRECIP') or (self.ptype=='snow') or (self.ptype=='Snow') or (self.ptype=='SNOW'):
+            self.precip=True
+            if (self.ptype=='snow') or (self.ptype=='Snow') or (self.ptype=='SNOW'):
+                self.snow=True
+        
+        #set the killflag to false. If this is True at the end, it means no points in the box were found. 
         self.killflag = False
         #first thing first, check to make sure there are points in the bounding box.
         #cut points to make sure there are points in your box.This should save you time. 
@@ -123,14 +154,11 @@ class GPMDPR():
             lons = self.hdf['NS']['Longitude'][:,12:37]
             lats = self.hdf['NS']['Latitude'][:,12:37]
             #shove it into a dataarray
-            da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
+            da = xr.DataArray(np.zeros(lons.shape), dims=['along_track', 'cross_track'],
                            coords={'lons': (['along_track','cross_track'],lons),
                                    'lats': (['along_track','cross_track'],lats)})
             #cut the the edges of the box
             da = da.where((da.lons >= self.corners[0]) & (da.lons <= self.corners[1]) & (da.lats >= self.corners[2])  & (da.lats <= self.corners[3]),drop=False)
-            #if you want only snowing cases, do the following
-            if snow:
-                da = da.where(da == 1,drop=False)
             #okay, now drop nans
             da = da.dropna(dim='along_track',how='all')
             #if there are no profiles, the len is 0, and we will set the kill flag
@@ -151,7 +179,7 @@ class GPMDPR():
                 #load data out of hdf
                 lons = self.hdf['NS']['Longitude'][:,12:37]
                 lats = self.hdf['NS']['Latitude'][:,12:37]
-
+            
             da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
                                                'lats': (['along_track','cross_track'],lats),
@@ -162,7 +190,21 @@ class GPMDPR():
 
             #make xr dataset
             self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
+                #
+
+            da = xr.DataArray(self.hdf['MS']['PRE']['flagPrecip'][:,:], dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'flag to diagnose precip at surface. 11 is precip from both, 10 is preicp from just Ku-band'
+
+            #make xr dataset
+            self.xrds['flagPrecip'] = da
             #
+            
+                
 
 
 
@@ -286,8 +328,11 @@ class GPMDPR():
             self.xrds['Dm_dpr'] = da
 
 
-            if snow:
-                self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1,drop=False)
+            if self.precip:
+                #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
+                self.xrds = self.xrds.where(self.xrds.flagPrecip==11)
+                if self.snow:
+                    self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
                 
             if self.corners is not None:
                 self.setboxcoords()
@@ -295,6 +340,9 @@ class GPMDPR():
             
          
     def setboxcoords(self):
+        """
+        This method sets all points outside the box to nan. 
+        """
         
         if len(self.corners) > 0:
             self.ll_lon = self.corners[0]
@@ -303,15 +351,12 @@ class GPMDPR():
             self.ur_lat = self.corners[3]
             self.xrds = self.xrds.where((self.xrds.lons >= self.ll_lon) & (self.xrds.lons <= self.ur_lon) & (self.xrds.lats >= self.ll_lat)  & (self.xrds.lats <= self.ur_lat),drop=False)
         else:
-            pass
+            print('ERROR, not boxcoods set...did you mean to do this?')
         
     def parse_dtime(self):
-        
         """
-        
-        create datetime objects from the hdf file, typically run this after you already filtered for precip/snow
-        to save computation time. 
-        
+        This method creates datetime objects from the hdf file in a timely mannor.
+        Typically run this after you already filtered for precip/snow to save additional time. 
         """
         year = np.asarray(self.hdf['MS']['ScanTime']['Year'][:],dtype=str)
         year = list(year)
@@ -355,9 +400,18 @@ class GPMDPR():
     
     def run_retrieval(self,path_to_models=None):
         
+        """
+        This method is a way to run our neural network trained retreival to get Dm in snowfall. 
+        Please see this AMS presentation until the paper comes out: *LINK HERE*.
+        
+        This method requires the use of tensorflow. So go install that. 
+        
+        """
+        
+        #import needed packages to run retrieval
         import tensorflow as tf
         import joblib
-        #supress warnings. skrews up my progress bar
+        #supress warnings. skrews up my progress bar when running in parallel
         def warn(*args, **kwargs):
             pass
         import warnings
@@ -419,12 +473,13 @@ class GPMDPR():
             self.retrieval_flag = 1
         
     def get_merra(self,interp=True):
+        """
+        This method matches up the *closest* MERRA-2 profiles. 
+        To do so it uses the xarray.sel command. 
         
-        """ 
-        
-        This is specific to my file structure at UIUC. Buyer beware.
-        
-        Future hope: interpolate merra-2 to the GPM-DPR vertical bins 
+        Please note this is not generalized. The files structure of my MERRA-2 files is a bit particular. 
+        In theory you could point this into your own directory where those files are. Or even use a different
+        reanalysis (e.g., ERA)
         
         """
         
@@ -471,10 +526,8 @@ class GPMDPR():
         merra.close()
         
     def interp_MERRA(self,keyname=None):
-        
         """ 
-        
-        This interpolates the MERRA two variables to the same veritcal levels as the GPM-DPR
+        This interpolates the MERRA data from the self.get_merra method, to the same veritcal levels as the GPM-DPR
         
         NOTE: I am not sure this is optimized! Not very fast..., but if you want you can turn it off
         
@@ -502,6 +555,10 @@ class GPMDPR():
         self.xrds[keyname] = da
         
     def extract_nearsurf(self):
+        """
+        Since we are often concerned with whats happening at the surface, this will extract the variables just above
+        the clutter. 
+        """
         keeper = self.xrds.range.values
         keeper = np.reshape(keeper,[1,keeper.shape[0]])
         keeper = np.tile(keeper,(25,1))
@@ -538,6 +595,9 @@ class GPMDPR():
         
 
     def grab_variable(self,keyname=None):
+        """
+        This goes along with the self.extract_nearsurf()
+        """
 
         if keyname is None:
             print('please supply keyname')
@@ -563,10 +623,11 @@ class GPMDPR():
                 
     def get_physcial_distance(self,reference_point = None):
         """ 
-
-        This function uses pyproj to calcualte distances between lats and lons. 
+        This method uses pyproj to calcualte distances between lats and lons. 
         reference_point is a list or array conisting of two entries, [Longitude,Latitude]
-
+        
+        Please note that this intentionally uses an older version of pyproj (< version 2.0, i used 1.9.5.1)
+        This is because it preserves how the function is called. 
         """
 
         if reference_point is None and self.reference_point is None:
@@ -580,7 +641,12 @@ class GPMDPR():
             if np.sqrt(x**2 + y**2) != 0:
                 'something isnt right with the projection. investigate'
             else:
-                x,y = p(self.xrds.lons.values,self.xrds.lats.values)
+                ind = np.isnan(self.xrds.NSKu_nearSurf.values)
+                x = np.zeros(self.xrds.lons.values.shape)
+                y = np.zeros(self.xrds.lats.values.shape)
+                x[~ind],y[~ind] = p(self.xrds.lons.values[~ind],self.xrds.lats.values[~ind])
+                x[ind] = np.nan
+                y[ind] = np.nan
                 da = xr.DataArray(np.sqrt(x**2 + y**2)/1000, dims=['along_track', 'cross_track'],
                     coords={'lons': (['along_track','cross_track'],self.xrds.lons),
                     'lats': (['along_track','cross_track'],self.xrds.lons),

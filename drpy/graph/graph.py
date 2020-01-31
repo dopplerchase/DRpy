@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt 
+import matplotlib
 from . import cmaps
 
 #plot parameters that I personally like, feel free to make these your own.
