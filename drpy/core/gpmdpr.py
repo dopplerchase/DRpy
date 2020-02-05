@@ -333,9 +333,16 @@ class GPMDPR():
                 self.xrds = self.xrds.where(self.xrds.flagPrecip==11)
                 if self.snow:
                     self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
-                
+                    
             if self.corners is not None:
                 self.setboxcoords()
+            
+            #to reduce size of data, drop empty cross-track sections 
+            self.xrds = self.xrds.dropna(dim='along_track',how='all')
+            
+            #as before, makes sure there is data...
+            if self.xrds.along_track.shape[0]==0:
+                self.killflag = True
             
             
          

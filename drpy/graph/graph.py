@@ -18,10 +18,74 @@ class GPMDPR_plot_obj():
     def __init__(self,GPMDPR=None,notebook=False): 
         if GPMDPR is None:
             self.xrds = None
+            self.corners=None
         else:
             self.xrds = GPMDPR.xrds
+            self.corners = GPMDPR.corners
         
         self.graphdict = {'title':None,'xlabel':None,'ylabel':None,'xlim':None,'ylim':None}
+        
+    def mapper(self,z = None,extent=None,vmin=None,vmax=None,cmap='cividis'):
+        """
+        This method creates a cartopy map of the data held in the xrds.
+        z is what is desired to be plotted at each lat and lon pair. If 
+        z is none, then it will default to just showing where all the footprints are. 
+        
+        """
+        
+        #import cartopy stuff
+        import cartopy
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib.ticker as mticker
+        from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+        import cartopy.io.shapereader as shpreader
+        from cartopy.mpl.geoaxes import GeoAxes
+        from mpl_toolkits.axes_grid1 import AxesGrid
+        from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
+        
+        #make figure
+        fig = plt.figure(figsize=(10, 10))
+        #add the map
+        ax = fig.add_subplot(1, 1, 1,projection=ccrs.PlateCarree())
+    
+        if (self.corners is not None) and (extent is None):
+            ax.set_extent(self.corners)
+            ax.set_xticks(np.arange(self.corners[0], self.corners[1], 1), crs=ccrs.PlateCarree())
+            ax.set_yticks(np.linspace(self.corners[2], self.corners[3], 5), crs=ccrs.PlateCarree())
+            lon_formatter = LongitudeFormatter(zero_direction_label=True)
+            lat_formatter = LatitudeFormatter()
+            ax.xaxis.set_major_formatter(lon_formatter)
+            ax.yaxis.set_major_formatter(lat_formatter)
+        elif (self.corners is not None) and (extent is not None):
+            ax.set_extent(extent)
+            ax.set_xticks(np.linspace(extent[0], extent[1], 5), crs=ccrs.PlateCarree())
+            ax.set_yticks(np.linspace(extent[2], extent[3], 5), crs=ccrs.PlateCarree())
+            lon_formatter = LongitudeFormatter(zero_direction_label=True)
+            lat_formatter = LatitudeFormatter()
+            ax.xaxis.set_major_formatter(lon_formatter)
+            ax.yaxis.set_major_formatter(lat_formatter)
+
+        ax.add_feature(cfeature.STATES.with_scale('50m'),lw=0.5)
+        ax.add_feature(cartopy.feature.OCEAN.with_scale('50m'))
+        ax.add_feature(cartopy.feature.LAND.with_scale('50m'), edgecolor='black',lw=0.5,facecolor=[0.95,0.95,0.95])
+        ax.add_feature(cartopy.feature.LAKES.with_scale('50m'), edgecolor='black')
+        ax.add_feature(cartopy.feature.RIVERS.with_scale('50m'))
+
+
+        if (self.corners is not None) and box:
+            ax.plot([corners[0],corners[0],corners[1],corners[1],corners[0]],[corners[2],corners[3],corners[3],corners[2],corners[2]],'-r',lw=3)
+            ax.plot(center_lon,center_lat,'w*',ms=16,zorder=7)
+            
+        if z is None:
+            ax.scatter(self.xrds.lons,self.xrds.lats,zorder=5)
+        else:
+            pm = ax.scatter(self.xrds.lons,self.xrds.lats,c=z,cmap=cmap,s=25,vmin=vmin,vmax=vmax,zorder=5)
+            cbar = plt.colorbar(pm,ax=ax,shrink=0.5)
+            cbar.set_label(z.name + ', [' + z.units + ']')
+        
+        ax.plot(self.xrds.lons,self.xrds.lats,'o',fillstyle='none',color='k',markeredgewidth=0.1,ms=4,zorder=6)
+                
         
     def CFAD(self,variablekey=None,bins=None,mincnt=20,graphdict=None):
         
