@@ -71,8 +71,8 @@ class GPMDPR_plot_obj():
         if (self.corners is not None) and (extent is None):
             #for some reason set_extent crashes the session on colab. 
 #             ax.set_extent(self.corners)
-            ax.set_xlim([corners[0],corners[1]])
-            ax.set_ylim([corners[2],corners[3]])
+            ax.set_xlim([self.corners[0],self.corners[1]])
+            ax.set_ylim([self.corners[2],self.corners[3]])
 #             ax.set_xticks(np.arange(self.corners[0], self.corners[1], 1), crs=ccrs.PlateCarree())
 #             ax.set_yticks(np.linspace(self.corners[2], self.corners[3], 5), crs=ccrs.PlateCarree())
 #             lon_formatter = LongitudeFormatter(zero_direction_label=True)
