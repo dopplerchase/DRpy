@@ -50,7 +50,10 @@ class GPMDPR_plot_obj():
         ax = fig.add_subplot(1, 1, 1,projection=ccrs.PlateCarree())
     
         if (self.corners is not None) and (extent is None):
-            ax.set_extent(self.corners)
+            #for some reason set_extent crashes the session on colab. 
+#             ax.set_extent(self.corners)
+            ax.set_xlim([corners[0],corners[1]])
+            ax.set_ylim([corners[2],corners[3]])
             ax.set_xticks(np.arange(self.corners[0], self.corners[1], 1), crs=ccrs.PlateCarree())
             ax.set_yticks(np.linspace(self.corners[2], self.corners[3], 5), crs=ccrs.PlateCarree())
             lon_formatter = LongitudeFormatter(zero_direction_label=True)
@@ -58,7 +61,9 @@ class GPMDPR_plot_obj():
             ax.xaxis.set_major_formatter(lon_formatter)
             ax.yaxis.set_major_formatter(lat_formatter)
         elif (self.corners is not None) and (extent is not None):
-            ax.set_extent(extent)
+#             ax.set_extent(extent)
+            ax.set_xlim([extent[0],extent[1]])
+            ax.set_ylim([extent[2],extent[3]])
             ax.set_xticks(np.linspace(extent[0], extent[1], 5), crs=ccrs.PlateCarree())
             ax.set_yticks(np.linspace(extent[2], extent[3], 5), crs=ccrs.PlateCarree())
             lon_formatter = LongitudeFormatter(zero_direction_label=True)
