@@ -90,7 +90,7 @@ class GPMDPR_plot_obj():
             lat_formatter = LatitudeFormatter()
             ax.xaxis.set_major_formatter(lon_formatter)
             ax.yaxis.set_major_formatter(lat_formatter)
-        elif (self.corners None) and (extent is not None):
+        elif (self.corners is None) and (extent is not None):
             #for some reason set_extent crashes the session on colab.
 #             ax.set_extent(extent)
             ax.set_xlim([extent[0],extent[1]])
