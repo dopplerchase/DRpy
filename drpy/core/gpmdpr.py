@@ -134,7 +134,7 @@ class GPMDPR():
 
         """
         #set the precip type of interest. If none, give back all data...
-        self.ptype=ptype
+        self.ptype= ptype
         self.snow = False
         self.precip = False
         
@@ -365,44 +365,44 @@ class GPMDPR():
         This method creates datetime objects from the hdf file in a timely mannor.
         Typically run this after you already filtered for precip/snow to save additional time. 
         """
-        year = np.asarray(self.hdf['MS']['ScanTime']['Year'][:],dtype=str)
+        year = self.hdf['MS']['ScanTime']['Year'][:]
+        ind = np.where(year == -9999)[0]
+        year = np.asarray(year,dtype=str)
         year = list(year)
 
         month = self.hdf['MS']['ScanTime']['Month'][:]
-        ind = np.where(month < 10)
         month = np.asarray(month,dtype=str)
         month = np.char.rjust(month, 2, fillchar='0')
         month = list(month)
 
         day = self.hdf['MS']['ScanTime']['DayOfMonth'][:]
-        ind = np.where(day < 10)
         day = np.asarray(day,dtype=str)
         day = np.char.rjust(day, 2, fillchar='0')
         day = list(day)
 
         hour = self.hdf['MS']['ScanTime']['Hour'][:]
-        ind = np.where(hour < 10)
         hour = np.asarray(hour,dtype=str)
         hour = np.char.rjust(hour, 2, fillchar='0')
         hour = list(hour)
 
         minute = self.hdf['MS']['ScanTime']['Minute'][:]
-        ind = np.where(minute < 10)
         minute = np.asarray(minute,dtype=str)
         minute = np.char.rjust(minute, 2, fillchar='0')
         minute = list(minute)
 
         second = self.hdf['MS']['ScanTime']['Second'][:]
-        ind = np.where(second < 10)
         second = np.asarray(second,dtype=str)
         second = np.char.rjust(second, 2, fillchar='0')
         second = list(second)
-
+        
         datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
         datestr = np.asarray(datestr,dtype=str)
+#         from IPython.core.debugger import Tracer; Tracer()() 
+#         print(datestr)
+        datestr[ind] = '1970-01-01 00:00:00'
         datestr = np.reshape(datestr,[len(datestr),1])
         datestr = np.tile(datestr,(1,25))
-        
+
         self.datestr = np.asarray(datestr,dtype=np.datetime64)
     
     def run_retrieval(self,path_to_models=None):
@@ -423,6 +423,11 @@ class GPMDPR():
             pass
         import warnings
         warnings.warn = warn
+        
+        #set number of threads = 1, this was crashing my parallel code
+        tf.config.threading.set_inter_op_parallelism_threads(1)
+        
+        print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
         
         if path_to_models is None:
             print('Please insert path to NN models')
