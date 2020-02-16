@@ -45,7 +45,7 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
         df = pd.DataFrame({'x':ind1,'y':ind2,'c':c})
         df2 = df.groupby(["x","y"]).count()
         df = df2.where(df2.values >= mincnt).dropna()
-        C = np.ones([xedge.shape[0]-1,yedge.shape[0]-1])*-9999
+        C = np.ones([xedge.shape[0],yedge.shape[0]])*-9999
         for i,ii in enumerate(df.index.values):
             C[ii[0]-1,ii[1]-1] = df.c.values[i]
         C = np.ma.masked_where(C == -9999,C)
@@ -91,7 +91,7 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
         df2 = df2.to_frame()
         df2.insert(1,'Count',df3.values)
         df = df2.where(df2.Count >= mincnt).dropna()
-        C = np.ones([xedge.shape[0]-1,yedge.shape[0]-1])*-9999
+        C = np.ones([xedge.shape[0],yedge.shape[0]])*-9999
         for i,ii in enumerate(df.index.values):
             C[ii[0]-1,ii[1]-1] = df.c.values[i]
         C = np.ma.masked_where(C == -9999,C)
