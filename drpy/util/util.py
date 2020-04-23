@@ -11,7 +11,7 @@ def percentile(n):
     return percentile_
 
 def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=None,vmax=None,edgecolor=None,powernorm=False,
-           ax=None,normed=False,method='mean',quantile=None):
+           ax=None,normed=False,method='mean',quantile=None,alpha=1.0,cbar=True):
     
     """ This function will grid data for you and provide the counts if no variable c is given, or the median if 
     a variable c is given. In the future I will add functionallity to do the median, and possibly quantiles. 
@@ -35,6 +35,7 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
     for i in np.arange(1,xedge.shape[0]):
         midpoints[i-1] = xedge[i-1] + (np.abs(xedge[i] - xedge[i-1]))/2.
     
+    #note on digitize. bin 0 is outside to the left of the bins, bin -1 is outside to the right
     ind1 = np.digitize(x,bins = xedge) #inds of x in each bin
     ind2 = np.digitize(y,bins = yedge) #inds of y in each bin
 
@@ -45,14 +46,18 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
         df = pd.DataFrame({'x':ind1,'y':ind2,'c':c})
         df2 = df.groupby(["x","y"]).count()
         df = df2.where(df2.values >= mincnt).dropna()
-        C = np.ones([xedge.shape[0],yedge.shape[0]])*-9999
+        C = np.ones([xedge.shape[0]-1,yedge.shape[0]-1])*-9999
         for i,ii in enumerate(df.index.values):
-            C[ii[0]-1,ii[1]-1] = df.c.values[i]
+            if (ii[0]==0) or (ii[1] == 0) or (ii[0] >= len(xedge)-1) or (ii[1] >= len(yedge)-1):
+                pass
+            else:
+                C[ii[0],ii[1]] = df.c.values[i]
         C = np.ma.masked_where(C == -9999,C)
         
         if normed:
             n_samples = np.ma.sum(C)
             C = C/n_samples
+            C = C*100
             print('n_samples= {}'.format(n_samples))
         
         if ax is None:
@@ -62,11 +67,14 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
             pass
             
         if powernorm:
-            pm = ax.pcolormesh(xedge,yedge,C.transpose(),cmap=cmap,edgecolor=edgecolor,norm=colors.PowerNorm(gamma=0.5),vmin=vmin,vmax=vmax)
-            cbar = plt.colorbar(pm,ax=ax)
+            pm = ax.pcolormesh(xedge,yedge,C.transpose(),cmap=cmap,edgecolor=edgecolor,norm=colors.PowerNorm(gamma=0.5),vmin=vmin,vmax=vmax,alpha=alpha)
+            
+            if cbar:
+                cbar = plt.colorbar(pm,ax=ax)
         else:
-            pm = ax.pcolormesh(xedge,yedge,C.transpose(),cmap=cmap,vmin=vmin,vmax=vmax,edgecolor=edgecolor)
-            cbar = plt.colorbar(pm,ax=ax)
+            pm = ax.pcolormesh(xedge,yedge,C.transpose(),cmap=cmap,vmin=vmin,vmax=vmax,edgecolor=edgecolor,alpha=alpha)
+            if cbar:
+                cbar = plt.colorbar(pm,ax=ax)
             
         return ax,cbar,C
     
@@ -91,9 +99,13 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
         df2 = df2.to_frame()
         df2.insert(1,'Count',df3.values)
         df = df2.where(df2.Count >= mincnt).dropna()
-        C = np.ones([xedge.shape[0],yedge.shape[0]])*-9999
+        C = np.ones([xedge.shape[0]-1,yedge.shape[0]-1])*-9999
         for i,ii in enumerate(df.index.values):
-            C[ii[0]-1,ii[1]-1] = df.c.values[i]
+            if (ii[0]==0) or (ii[1] == 0) or (ii[0] >= len(xedge)-1) or (ii[1] >= len(yedge)-1):
+                pass
+            else:
+                C[ii[0],ii[1]] = df.c.values[i]
+
         C = np.ma.masked_where(C == -9999,C)
 
         if ax is None:
@@ -103,11 +115,13 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
             pass
         
         if powernorm:
-            pm = ax.pcolor(xedge,yedge,C.transpose(),cmap=cmap,vmin=vmin,vmax=vmax,norm=colors.PowerNorm(gamma=0.5))
-            cbar = plt.colorbar(pm,ax=ax)
+            pm = ax.pcolor(xedge,yedge,C.transpose(),cmap=cmap,vmin=vmin,vmax=vmax,norm=colors.PowerNorm(gamma=0.5),alpha=alpha)
+            if cbar:
+                cbar = plt.colorbar(pm,ax=ax)
         else:
             
-            pm = ax.pcolor(xedge,yedge,C.transpose(),cmap=cmap,vmin=vmin,vmax=vmax)
-            cbar = plt.colorbar(pm,ax=ax)
+            pm = ax.pcolor(xedge,yedge,C.transpose(),cmap=cmap,vmin=vmin,vmax=vmax,alpha=alpha)
+            if cbar: 
+                cbar = plt.colorbar(pm,ax=ax)
             
     return ax,cbar,C

@@ -4,6 +4,9 @@ import xarray as xr
 import h5py 
 import numpy as np
 import pandas as pd
+import datetime
+import scipy
+import scipy.interpolate
 
 
 
@@ -326,7 +329,21 @@ class GPMDPR():
                 da = da.where(self.xrds.echotop==0)
             da = da.where(da >= 0)
             self.xrds['Dm_dpr'] = da
-
+            
+            
+            da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,0], dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.attrs['units'] = 'dBNw'
+            da.attrs['standard_name'] = 'retrieved Nw, from DPR algo'
+            if clutter:
+                da = da.where(self.xrds.clutter==0)
+            if echotop:
+                da = da.where(self.xrds.echotop==0)
+            da = da.where(da >= 0)
+            self.xrds['Nw_dpr'] = da
 
             if self.precip:
                 #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
@@ -667,3 +684,539 @@ class GPMDPR():
                 da.attrs['standard_name'] = 'distance, way of the crow (i.e. direct), to the reference point'
                 self.xrds['distance'] = da
                 
+class APR():
+    
+    """
+    Author: Randy J. Chase. This class is intended to help with APR-2/APR-3 files. 
+    
+    Currently supported campaigns: gcpex, olympex 
+    
+    Feel free to reach out to me on twitter (@dopplerchase) or email randyjc2@illinois.edu
+    """
+    
+    def __init__(self):
+        self.initialzied = True 
+        self.T3d = False  
+        
+    def read(self,filename,campaign='gcpex'):
+    
+        """
+        ===========
+
+        This is for reading in apr3 hdf files from OLYMPEX and return them all in one dictionary
+
+        ===========
+
+        filename = filename of the apr3 file
+        """
+        
+        if campaign=='gcpex':
+            self.campaign = campaign
+            from pyhdf.SD import SD, SDC
+            apr = {}
+            flag = 0
+            ##Radar varibles in hdf file found by hdf.datasets
+            radar_freq = 'zhh14' #Ku
+            radar_freq2 = 'zhh35' #Ka
+            radar_freq3 = 'zhh95' #W
+            radar_freq4 = 'ldr14' #LDR
+            vel_str = 'vel14' #Doppler
+            ##
+
+            hdf = SD(filename, SDC.READ)
+
+            #What used to be here is a searching param looking for W-band, since we know there is no W in GCPEX, just autofill it. 
+            alt = hdf.select('alt3D')
+            lat = hdf.select('lat')
+            lon = hdf.select('lon')
+            roll = hdf.select('roll').get()
+            time = hdf.select('scantime').get()
+            surf = hdf.select('surface_index').get()
+            isurf = hdf.select('isurf').get()
+            plane = hdf.select('alt_nav').get()
+            radar = hdf.select(radar_freq) #ku
+            radar2 = hdf.select(radar_freq2) #ka
+            radar4 = hdf.select(radar_freq4) #ldr
+            vel = hdf.select(vel_str)
+            lon3d = hdf.select('lon3D')
+            lat3d = hdf.select('lat3D')
+            alt3d = hdf.select('alt3D')
+            lat3d_scale = hdf.select('lat3D_scale').get()[0][0]
+            lon3d_scale = hdf.select('lon3D_scale').get()[0][0]
+            alt3d_scale = hdf.select('alt3D_scale').get()[0][0]
+            lat3d_offset = hdf.select('lat3D_offset').get()[0][0]
+            lon3d_offset = hdf.select('lon3D_offset').get()[0][0]
+            alt3d_offset = hdf.select('alt3D_offset').get()[0][0]
+
+            alt = alt.get()
+            ngates = alt.shape[0]
+            lat = lat.get()
+            lon = lon.get()
+
+            lat3d = lat3d.get()
+            lat3d = (lat3d/lat3d_scale) + lat3d_offset
+            lon3d = lon3d.get()
+            lon3d = (lon3d/lon3d_scale) + lon3d_offset
+            alt3d = alt3d.get()
+            alt3d = (alt3d/alt3d_scale) + alt3d_offset
+
+            radar_n = radar.get()
+            radar_n = radar_n/100.
+            radar_n2 = radar2.get()
+            radar_n2 = radar_n2/100.
+
+            radar_n4 = radar4.get()
+            radar_n4 = radar_n4/100.
+            vel_n = vel.get()
+            vel_n = vel_n/100.
+
+            #Quality control (use masked values
+            radar_n = np.ma.masked_where(radar_n<=-99,radar_n)
+            radar_n2 = np.ma.masked_where(radar_n2<=-99,radar_n2)
+            radar_n4 = np.ma.masked_where(radar_n4<=-99,radar_n4)
+
+            radar_n3 = np.ma.zeros(radar_n.shape)
+            radar_n3 = np.ma.masked_where(radar_n3 == 0,radar_n3)
+
+            vel_n = np.ma.masked_where(vel_n <= -99, vel_n)
+        
+        if campaign == 'olympex':
+            
+            self.campaign = campaign
+            ##Radar varibles in hdf file found by hdf.datasets
+            radar_freq = 'zhh14' #Ku
+            radar_freq2 = 'zhh35' #Ka
+            radar_freq3 = 'z95s' #W
+            radar_freq4 = 'ldr14' #LDR
+            vel_str = 'vel14' #Doppler
+            ##
+
+
+            import h5py
+            hdf = h5py.File(filename,"r")
+
+            listofkeys = hdf['lores'].keys()
+            alt = hdf['lores']['alt3D'][:]
+            lat = hdf['lores']['lat'][:]
+            lon = hdf['lores']['lon'][:]
+            time = hdf['lores']['scantime'][:]
+            surf = hdf['lores']['surface_index'][:]
+            isurf =  hdf['lores']['isurf'][:]
+            plane =  hdf['lores']['alt_nav'][:]
+            radar = hdf['lores'][radar_freq][:]
+            radar2 = hdf['lores'][radar_freq2][:]
+            radar4 = hdf['lores'][radar_freq4][:]
+            vel = hdf['lores']['vel14c'][:]
+            lon3d = hdf['lores']['lon3D'][:]
+            lat3d = hdf['lores']['lat3D'][:]
+            alt3d = hdf['lores']['alt3D'][:]
+            roll = hdf['lores']['roll'][:]
+
+            #see if there is W band
+            if 'z95s' in listofkeys:
+                if 'z95n' in listofkeys:
+                    radar_nadir = hdf['lores']['z95n'][:]
+                    radar_scanning = hdf['lores']['z95s'][:]
+                    radar3 = radar_scanning
+                    w_flag = 1
+                    ##uncomment if you want high sensativty as nadir scan (WARNING, CALIBRATION)
+                    #radar3[:,12,:] = radar_nadir[:,12,:]
+                else:
+                    radar3 = hdf['lores']['z95s'][:]
+                    print('No vv, using hh')
+            else:
+                radar3 = np.ma.zeros(radar.shape)
+                radar3 = np.ma.masked_where(radar3==0,radar3)
+                w_flag = 1
+                print('No W band')
+
+            ##convert time to datetimes
+            time_dates = np.empty(time.shape,dtype=object)
+            for i in np.arange(0,time.shape[0]):
+                for j in np.arange(0,time.shape[1]):
+                    tmp = datetime.datetime.utcfromtimestamp(time[i,j])
+                    time_dates[i,j] = tmp
+
+            #Create a time at each gate (assuming it is the same down each ray, there is a better way to do this)      
+            time_gate = np.empty(lat3d.shape,dtype=object)
+            for k in np.arange(0,550):
+                for i in np.arange(0,time_dates.shape[0]):
+                    for j in np.arange(0,time_dates.shape[1]):
+                        time_gate[k,i,j] = time_dates[i,j]       
+
+            #Quality control (masked where invalid)
+            radar_n = np.ma.masked_where(radar <= -99,radar)
+            radar_n2 = np.ma.masked_where(radar2 <= -99,radar2)
+            radar_n3 = np.ma.masked_where(radar3 <= -99,radar3)
+            radar_n4 = np.ma.masked_where(radar4 <= -99,radar4)
+
+            #Get rid of nans, the new HDF has builtin
+            radar_n = np.ma.masked_where(np.isnan(radar_n),radar_n)
+            radar_n2 = np.ma.masked_where(np.isnan(radar_n2),radar_n2)
+            radar_n3 = np.ma.masked_where(np.isnan(radar_n3),radar_n3)
+            radar_n4 = np.ma.masked_where(np.isnan(radar_n4),radar_n4)
+
+
+        ##convert time to datetimes
+        time_dates = np.empty(time.shape,dtype=object)
+        for i in np.arange(0,time.shape[0]):
+            for j in np.arange(0,time.shape[1]):
+                tmp = datetime.datetime.utcfromtimestamp(time[i,j])
+                time_dates[i,j] = tmp
+
+        #Create a time at each gate (assuming it is the same down each ray, there is a better way to do this)      
+        time_gate = np.empty(lat3d.shape,dtype=object)
+        for k in np.arange(0,550):
+            for i in np.arange(0,time_dates.shape[0]):
+                for j in np.arange(0,time_dates.shape[1]):
+                    time_gate[k,i,j] = time_dates[i,j]        
+        
+        time3d = np.copy(time_gate)
+
+        da = xr.DataArray(radar_n,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                       'along_track':np.arange(radar_n.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],lon3d),
+                                  'lat3d':(['range','cross_track','along_track'],lat3d),
+                                  'time3d': (['range','cross_track','along_track'],time3d),
+                                  'alt3d':(['range','cross_track','along_track'],alt3d)})      
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+        
+        #make xr dataset
+        self.xrds = da.to_dataset(name = 'Ku')
+        #
+        
+        da = xr.DataArray(radar_n2,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                       'along_track':np.arange(radar_n.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],lon3d),
+                                  'lat3d':(['range','cross_track','along_track'],lat3d),
+                                  'time3d': (['range','cross_track','along_track'],time3d),
+                                  'alt3d':(['range','cross_track','along_track'],alt3d)})  
+        
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ka-band Reflectivity'
+        
+        #add to  xr dataset
+        self.xrds['Ka'] = da
+        #
+        
+        da = xr.DataArray(radar_n3,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                       'along_track':np.arange(radar_n.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],lon3d),
+                                  'lat3d':(['range','cross_track','along_track'],lat3d),
+                                  'time3d': (['range','cross_track','along_track'],time3d),
+                                  'alt3d':(['range','cross_track','along_track'],alt3d)})  
+        
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'W-band Reflectivity'
+        
+        #add to  xr dataset
+        self.xrds['W'] = da
+        #
+        
+        da = xr.DataArray(radar_n4,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                       'along_track':np.arange(radar_n.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],lon3d),
+                                  'lat3d':(['range','cross_track','along_track'],lat3d),
+                                  'time3d': (['range','cross_track','along_track'],time3d),
+                                  'alt3d':(['range','cross_track','along_track'],alt3d)})  
+        
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dB'
+        da.attrs['standard_name'] = 'LDR at Ku-band '
+        
+        #add to  xr dataset
+        self.xrds['LDR'] = da
+        #
+        
+        da = xr.DataArray(roll,dims={'cross_track':np.arange(0,24),'along_track':np.arange(radar_n.shape[2])})
+        da.attrs['units'] = 'degrees'
+        da.attrs['standard_name'] = 'Left/Right Plane Roll'
+        
+        #add to  xr dataset
+        self.xrds['Roll'] = da
+        #
+    
+    def determine_ground_lon_lat(self,near_surf_Z=True):
+        
+        mean_alt = self.xrds.alt3d.mean(axis=(1,2))
+        ind_sealevel = find_nearest(mean_alt,0)
+        g_lon = self.xrds.lon3d[ind_sealevel,:,:]
+        g_lat = self.xrds.lat3d[ind_sealevel,:,:]
+        
+        da = xr.DataArray(g_lon,dims={'cross_track':g_lon.shape[0],'along_track':np.arange(g_lon.shape[1])})
+        da.attrs['units'] = 'degress longitude'
+        da.attrs['standard_name'] = 'Surface Longitude'
+        self.xrds['g_lon'] = da
+
+        da = xr.DataArray(g_lat,dims={'cross_track':g_lat.shape[0],'along_track':np.arange(g_lat.shape[1])})
+        da.attrs['units'] = 'degress latitude'
+        da.attrs['standard_name'] = 'Surface latitude'
+        self.xrds['g_lat'] = da
+        
+        
+        if near_surf_Z:
+            ind_nearsurf = find_nearest(mean_alt,1100)
+            g_Ku = self.xrds.Ku[ind_nearsurf,:,:]
+            da = xr.DataArray(g_Ku,dims={'cross_track':g_lon.shape[0],'along_track':np.arange(g_lon.shape[1])})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Near_surf Z'
+            self.xrds['Ku_nearsurf'] = da
+
+            g_Ka = self.xrds.Ka[ind_nearsurf,:,:]
+            da = xr.DataArray(g_Ka,dims={'cross_track':g_lon.shape[0],'along_track':np.arange(g_lon.shape[1])})
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Near_surf Z'
+            self.xrds['Ka_nearsurf'] = da
+
+        
+    def setboxcoords(self,nanout=True):
+        """
+        This method sets all points outside the box to nan. 
+        """
+        
+        if len(self.corners) > 0:
+            self.ll_lon = self.corners[0]
+            self.ur_lon = self.corners[1]
+            self.ll_lat = self.corners[2]
+            self.ur_lat = self.corners[3]
+            if nanout:
+                self.xrds = self.xrds.where((self.xrds.g_lon >= self.ll_lon) & (self.xrds.g_lon <= self.ur_lon) & (self.xrds.g_lat >= self.ll_lat)  & (self.xrds.g_lat <= self.ur_lat),drop=False)
+        else:
+            print('ERROR, not boxcoods set...did you mean to do this?')
+            
+    def cit_temp_to_apr(self,fl,time_inds,insidebox=True):
+    
+        self.T3d = True 
+        cit_lon = fl['longitude']['data'][time_inds]
+        cit_lat = fl['latitude']['data'][time_inds]
+        cit_alt = fl['altitude']['data'][time_inds]
+        cit_twc =  fl['twc']['data'][time_inds]
+        cit_T = fl['temperature']['data'][time_inds]
+        
+        if insidebox:
+            ind_inbox = np.where((cit_lon >= self.ll_lon) & (cit_lon <= self.ur_lon) & (cit_lat >= self.ll_lat)  & (cit_lat <= self.ur_lat))
+        else:
+            ind_inbox = np.arange(0,len(fl['temperature']['data'][time_inds]))
+            
+        bins = np.arange(0,6000,500)
+        binind = np.digitize(cit_alt[ind_inbox],bins=bins)
+        df = pd.DataFrame({'Temperature':cit_T[ind_inbox],'Alt':cit_alt[ind_inbox],'binind':binind})
+        df = df.groupby('binind').mean()
+        f_T = scipy.interpolate.interp1d(df.Alt.values,df.Temperature.values,fill_value='extrapolate',kind='linear')
+        T3d = f_T(self.xrds.alt3d.values)
+
+        da = xr.DataArray(T3d,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'degC'
+        da.attrs['standard_name'] = 'Temperature, inferred from Citation Spiral'
+
+        #add to  xr dataset
+        self.xrds['T3d'] = da
+        #
+       
+
+    def run_retrieval(self):
+        unrimed = xr.open_dataset('/data/gpm/a/randyjc2/Unrimed_simulation_wholespecturm.nc',engine='netcdf4')
+        #gather data 
+        X = np.zeros([unrimed['Z'].values.shape[0],3])
+        X[:,0] = 10**(unrimed['Z'].values/10.) #Ku 
+        X[:,1] = 10**(unrimed['Z2'].values/10.) #Ka 
+        X[:,2] = unrimed['T_env'].values
+
+
+        #scale data (mean=0,std=1)
+        from sklearn.preprocessing import StandardScaler
+        import sklearn.model_selection
+        scaler_X = StandardScaler()
+        scaler_X.fit(X)
+
+        y = np.hstack([np.log10(unrimed['Nw'].values).reshape([unrimed['IWC'].values.shape[0],1]),
+                       unrimed['Dm'].values.reshape([unrimed['IWC'].values.shape[0],1])*1000,
+                       unrimed['Dm_frozen'].values.reshape([unrimed['IWC'].values.shape[0],1])*1000])
+        #normally we do not scale Y, but here I want to make sure it is not perfering one perceptron or another based on scale 
+        scaler_y = StandardScaler()
+        scaler_y.fit(y)
+
+
+        #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
+        Ku = self.xrds.Ku.values
+        shape_step1 = Ku.shape
+        Ku = Ku.reshape([Ku.shape[0],Ku.shape[1]*Ku.shape[2]])
+        shape_step2 = Ku.shape
+        Ku = Ku.reshape([Ku.shape[0]*Ku.shape[1]])
+        Ka = self.xrds.Ka.values
+        Ka = Ka.reshape([Ka.shape[0],Ka.shape[1]*Ka.shape[2]])
+        Ka = Ka.reshape([Ka.shape[0]*Ka.shape[1]])
+
+        T = self.xrds.T3d.values
+        T = T.reshape([T.shape[0],T.shape[1]*T.shape[2]])
+        T = T.reshape([T.shape[0]*T.shape[1]])
+
+        ind_masked = np.isnan(Ku) 
+        Ku_nomask = np.zeros(Ku.shape)
+        Ka_nomask = np.zeros(Ka.shape)
+        T_nomask = np.zeros(T.shape)
+
+        Ku_nomask[~ind_masked] = Ku[~ind_masked]
+        Ka_nomask[~ind_masked] = Ka[~ind_masked]
+        T_nomask[~ind_masked]  = T[~ind_masked]
+        ind = np.where(Ku_nomask!=0)[0]
+
+        #scale the input vectors by the mean that it was trained with
+        X = np.zeros([Ku_nomask.shape[0],3])
+        X[:,0] = (10**(Ku_nomask/10) - scaler_X.mean_[0])/scaler_X.scale_[0]
+        X[:,1] = (10**(Ka_nomask/10)- scaler_X.mean_[1])/scaler_X.scale_[1]
+        X[:,2] = (T_nomask- scaler_X.mean_[2])/scaler_X.scale_[2]
+        #
+
+        import tensorflow as tf
+        from tensorflow.python.keras import losses
+        model_single = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_Zku_dualoutput_unrimed_NwDm.h5',
+                                                  custom_objects=None,compile=True)
+
+        model_dual = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_ZkuZka_dualoutput_unrimed_NwDm.h5',
+                                                custom_objects=None,compile=True)
+
+#         model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_ZkuZkaT_dualoutput_unrimed_NwDm.h5',custom_objects=None,
+#             compile=True)
+
+        model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/tri_output/NN_ZkuZkaT_trioutput_unrimed_wholespecturm_nodropout_Plateu_8layers_64.h5',custom_objects=None,compile=True)
+
+        if self.T3d:
+            yhat = model_dual_T.predict(X[ind,0:3],batch_size=len(X[ind,0]))
+            yhat = scaler_y.inverse_transform(yhat)
+        else:
+            yhat = model_dual.predict(X[ind,0:2],batch_size=len(X[ind,0]))
+            yhat = scaler_y.inverse_transform(yhat)
+        
+        ind = np.where(Ku_nomask!=0)[0]
+        Nw = np.zeros(Ku_nomask.shape)
+        Nw[ind] = np.squeeze(yhat[:,0])
+        Nw = Nw.reshape([shape_step2[0],shape_step2[1]])
+        Nw = Nw.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        Nw = np.ma.masked_where(Nw==0.0,Nw)
+
+        da = xr.DataArray(Nw,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'log(m^-4)'
+        da.attrs['standard_name'] = 'Retireved Liquid Eq. Nw'
+
+        self.xrds['Nw'] = da
+
+        Dm = np.zeros(Ku_nomask.shape)
+        Dm[ind] = np.squeeze(yhat[:,1])
+        Dm = Dm.reshape([shape_step2[0],shape_step2[1]])
+        Dm = Dm.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        Dm = np.ma.masked_where(Dm==0.0,Dm)
+
+        da = xr.DataArray(Dm,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'mm'
+        da.attrs['standard_name'] = 'Retireved Liquid Eq. Dm'
+
+        self.xrds['Dm'] = da
+        
+        Dm_frozen = np.zeros(Ku_nomask.shape)
+        Dm_frozen[ind] = np.squeeze(yhat[:,2])
+        Dm_frozen = Dm_frozen.reshape([shape_step2[0],shape_step2[1]])
+        Dm_frozen = Dm_frozen.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        Dm_frozen = np.ma.masked_where(Dm_frozen==0.0,Dm_frozen)
+
+        da = xr.DataArray(Dm_frozen,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'mm'
+        da.attrs['standard_name'] = 'Retireved Frozen Dm'
+
+        self.xrds['Dm_frozen'] = da
+        
+        Nw = 10**Nw #undo log, should be in m^-4
+        Dm = Dm/1000. # convert to m ^4
+        IWC = (Nw*(Dm)**4*1000*np.pi)/4**(4) # the 1000 is density of water (kg/m^3)
+        IWC = IWC*1000 #convert to g/m^3 
+        
+        da = xr.DataArray(IWC,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'g m^-3'
+        da.attrs['standard_name'] = 'Retireved IWC, calculated from Nw and Dm'
+
+        self.xrds['IWC'] = da
+        
+        
+    def cloudtopmask(self,sigma=1,mindBZ = 10):
+        import scipy.ndimage
+
+        ku_temp = self.xrds.Ku.values 
+        ku_temp[np.isnan(ku_temp)] = -99.99
+        #Maskes Ku cloudtop noise
+        ku_new = np.zeros(ku_temp.shape)
+        ku_new = np.ma.masked_where(ku_new == 0.0,ku_new)
+        for i in np.arange(0,24):
+            temp = np.copy(ku_temp[:,i,:])
+            a = scipy.ndimage.filters.gaussian_filter(temp,sigma)
+            a = np.ma.masked_where(a<mindBZ,a)
+            temp = np.ma.masked_where(a.mask,temp)
+            ku_new[:,i,:] = np.ma.copy(temp)
+
+        # np.ma.set_fill_value(ku_temp,-9999)
+        ku_new = np.ma.masked_where(ku_new < mindBZ,ku_new)
+        #new data has some weird data near plane. Delete manually
+        ku_new = np.ma.masked_where(self.xrds.alt3d.values > 10000, ku_new)
+        
+        da = xr.DataArray(ku_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+
+        self.xrds['Ku'] = da
+        
+def find_nearest(array,value):
+    idx = (np.abs(array-value)).argmin()
+    return idx
