@@ -431,10 +431,14 @@ class GPMDPR():
         This method requires the use of tensorflow. So go install that. 
         
         """
-        
-        #import needed packages to run retrieval
         import tensorflow as tf
-        import joblib
+        from tensorflow.python.keras import losses
+        
+        #load scalers
+        from pickle import load
+        scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
+        scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
+        
         #supress warnings. skrews up my progress bar when running in parallel
         def warn(*args, **kwargs):
             pass
@@ -449,10 +453,7 @@ class GPMDPR():
         if path_to_models is None:
             print('Please insert path to NN models')
         else:
-            scaler = joblib.load(path_to_models+'scaler_training_unrimed.save')
-            model_dual_dm = tf.keras.models.load_model(path_to_models+'NN_ZKuKa_Dm_deep_unrimed.h5',
-                            custom_objects=None,
-                            compile=True)
+            model_dual_T = tf.keras.models.load_model(path_to_models + 'NN_model_final.h5',custom_objects=None,compile=True)
             
             #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
             Ku = self.xrds.NSKu.values
@@ -464,40 +465,103 @@ class GPMDPR():
             Ka = Ka.reshape([Ka.shape[0],Ka.shape[1]*Ka.shape[2]])
             Ka = Ka.reshape([Ka.shape[0]*Ka.shape[1]])
             
+            T = self.xrds['T'].values - 273.15 #expects in degC
+            T = T.reshape([T.shape[0],T.shape[1]*T.shape[2]])
+            T = T.reshape([T.shape[0]*T.shape[1]])
+            
             #Make sure we only run in on non-nan values. 
             ind_masked = np.isnan(Ku) 
             ind_masked2 = np.isnan(Ka)
             Ku_nomask = np.zeros(Ku.shape)
             Ka_nomask = np.zeros(Ka.shape)
+            T_nomask = np.zeros(T.shape)
             Ku_nomask[~ind_masked] = Ku[~ind_masked]
             Ka_nomask[~ind_masked] = Ka[~ind_masked]
+            T_nomask[~ind_masked] = T[~ind_masked]
             
             ind = np.where(Ku_nomask!=0)[0]
 
             #scale the input vectors by the mean that it was trained with
-            X = np.zeros([Ku_nomask.shape[0],2])
-            X[:,0] = (10**(Ku_nomask/10) - scaler.mean_[0])/scaler.scale_[0]
-            X[:,1] = (10**(Ka_nomask/10)- scaler.mean_[2])/scaler.scale_[2]
+            X = np.zeros([Ku_nomask.shape[0],3])
+            X[:,0] = (10**(Ku_nomask/10) - scaler_X.mean_[0])/scaler_X.scale_[0]
+            X[:,1] = (10**(Ka_nomask/10)- scaler_X.mean_[1])/scaler_X.scale_[1]
+            X[:,2] = (T_nomask- scaler_X.mean_[2])/scaler_X.scale_[2]
             #
             
-            #actually run the retrieval
-            Dm_retrieved = model_dual_dm.predict(X[ind,:],batch_size=len(X[ind,0])) #dual
+            yhat = model_dual_T.predict(X[ind,0:3],batch_size=len(X[ind,0]))
+            yhat = scaler_y.inverse_transform(yhat)
             
-            #shove it back into the original shape
+            ind = np.where(Ku_nomask!=0)[0]
+            Nw = np.zeros(Ku_nomask.shape)
+            Nw[ind] = np.squeeze(yhat[:,0])
+            Nw = Nw.reshape([shape_step2[0],shape_step2[1]])
+            Nw = Nw.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+            Nw = np.ma.masked_where(Nw==0.0,Nw)
+
+            da = xr.DataArray(Nw, dims=['along_track', 'cross_track','range'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+            
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'log(m^-4)'
+            da.attrs['standard_name'] = 'retrieved Nw from the NN (Chase et al. 2020)'
+            da = da.where(da > 0.)
+            self.xrds['Nw'] = da
+           
             Dm = np.zeros(Ku_nomask.shape)
-            Dm[ind] = np.squeeze(Dm_retrieved)
+            Dm[ind] = np.squeeze(yhat[:,1])
             Dm = Dm.reshape([shape_step2[0],shape_step2[1]])
             Dm = Dm.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
-            
+            Dm = np.ma.masked_where(Dm==0.0,Dm)
+
             da = xr.DataArray(Dm, dims=['along_track', 'cross_track','range'],
-                           coords={'lons': (['along_track','cross_track'],self.xrds.lons),
-                                   'lats': (['along_track','cross_track'],self.xrds.lons),
-                                   'time': (['along_track','cross_track'],self.xrds.time),
-                                   'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+
+            da.fillna(value=-9999)
             da.attrs['units'] = 'mm'
-            da.attrs['standard_name'] = 'retrieved Dm from the NN (Chase et al. 2020)'
-            da = da.where(da > 0.)
+            da.attrs['standard_name'] = 'retrieved Liquid Eq. Dm from the NN (Chase et al. 2020)'
+
             self.xrds['Dm'] = da
+
+            Dm_frozen = np.zeros(Ku_nomask.shape)
+            Dm_frozen[ind] = np.squeeze(yhat[:,2])
+            Dm_frozen = Dm_frozen.reshape([shape_step2[0],shape_step2[1]])
+            Dm_frozen = Dm_frozen.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+            Dm_frozen = np.ma.masked_where(Dm_frozen==0.0,Dm_frozen)
+
+            da = xr.DataArray(Dm_frozen, dims=['along_track', 'cross_track','range'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'mm'
+            da.attrs['standard_name'] = 'retrieved Frozen Dm from the NN (Chase et al. 2020)'
+
+            self.xrds['Dm_frozen'] = da
+        
+            Nw = 10**Nw #undo log, should be in m^-4
+            Dm = Dm/1000. # convert to m ^4
+            IWC = (Nw*(Dm)**4*1000*np.pi)/4**(4) # the 1000 is density of water (kg/m^3)
+            IWC = IWC*1000 #convert to g/m^3 
+        
+            da = xr.DataArray(IWC, dims=['along_track', 'cross_track','range'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'g m^{-3}'
+            da.attrs['standard_name'] = 'Calc IWC from retrieved Nw and Dm from the NN (Chase et al. 2020)'
+
+            self.xrds['IWC'] = da
             
             self.retrieval_flag = 1
         
@@ -943,6 +1007,15 @@ class APR():
         #add to  xr dataset
         self.xrds['Roll'] = da
         #
+        
+        
+        da = xr.DataArray(isurf,dims={'cross_track':np.arange(0,24),'along_track':np.arange(radar_n.shape[2])})
+        da.attrs['units'] = 'none'
+        da.attrs['standard_name'] = 'index of best guess for location of surfce'
+        
+        #add to  xr dataset
+        self.xrds['surf'] = da
+        #
     
     def determine_ground_lon_lat(self,near_surf_Z=True):
         
@@ -1030,28 +1103,11 @@ class APR():
        
 
     def run_retrieval(self):
-        unrimed = xr.open_dataset('/data/gpm/a/randyjc2/Unrimed_simulation_wholespecturm.nc',engine='netcdf4')
-        #gather data 
-        X = np.zeros([unrimed['Z'].values.shape[0],3])
-        X[:,0] = 10**(unrimed['Z'].values/10.) #Ku 
-        X[:,1] = 10**(unrimed['Z2'].values/10.) #Ka 
-        X[:,2] = unrimed['T_env'].values
-
-
-        #scale data (mean=0,std=1)
-        from sklearn.preprocessing import StandardScaler
-        import sklearn.model_selection
-        scaler_X = StandardScaler()
-        scaler_X.fit(X)
-
-        y = np.hstack([np.log10(unrimed['Nw'].values).reshape([unrimed['IWC'].values.shape[0],1]),
-                       unrimed['Dm'].values.reshape([unrimed['IWC'].values.shape[0],1])*1000,
-                       unrimed['Dm_frozen'].values.reshape([unrimed['IWC'].values.shape[0],1])*1000])
-        #normally we do not scale Y, but here I want to make sure it is not perfering one perceptron or another based on scale 
-        scaler_y = StandardScaler()
-        scaler_y.fit(y)
-
-
+        
+        from pickle import load
+        scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
+        scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
+        
         #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
         Ku = self.xrds.Ku.values
         shape_step1 = Ku.shape
@@ -1094,7 +1150,7 @@ class APR():
 #         model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_ZkuZkaT_dualoutput_unrimed_NwDm.h5',custom_objects=None,
 #             compile=True)
 
-        model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/tri_output/NN_ZkuZkaT_trioutput_unrimed_wholespecturm_nodropout_Plateu_8layers_64.h5',custom_objects=None,compile=True)
+        model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/tri_output/NN_ZkuZkaT_trioutput_unrimed_wholespecturm_nodropout_lrexp.h5',custom_objects=None,compile=True)
 
         if self.T3d:
             yhat = model_dual_T.predict(X[ind,0:3],batch_size=len(X[ind,0]))
@@ -1216,6 +1272,176 @@ class APR():
         da.attrs['standard_name'] = 'Ku-band Reflectivity'
 
         self.xrds['Ku'] = da
+        
+    def mask_surf(self):
+        k = 12
+        ku_orig = self.xrds.Ku.values[:,k,:]
+        ku_out = np.ma.zeros(self.xrds.Ku.shape)
+        ku_orig = np.ma.masked_where(np.isnan(ku_orig),ku_orig)
+        ku = scipy.ndimage.gaussian_filter(ku_orig,1)
+        for i in np.arange(0,ku.shape[1]):
+            ku_prof = 10**(ku[:,i]/10.)
+            alt_prof = self.xrds.alt3d.values[:,k,i]
+            surf1 = self.xrds.surf.values[k,i]
+            filt = scipy.ndimage.sobel(ku_prof)
+            #from the surface go up until Der < some value
+            filt2 = np.abs(filt)
+#             from IPython.core.debugger import Tracer; Tracer()() 
+            tol = filt2[int(surf1)]/filt2[int(surf1)]
+            j = 0 
+            while tol > 0.01:
+                j = j - 1
+                ii = int(surf1)+j
+                tol = filt2[ii]/filt2[int(surf1)]
+            val = 2500
+            if alt_prof[ii] >= val:
+                ku_prof = np.ma.masked_where(alt_prof <= val,ku_orig[:,i])
+                ku_orig[:,i] = ku_prof
+            else:
+                ku_orig[ii:,i] = np.ma.masked
+
+        ku_out[:,k,:] = ku_orig
+
+        for k in np.arange(0,24):
+            if k == 12:
+                continue
+            ku_out[:,k,:] = np.ma.masked_where(ku_out[:,12,:].mask,self.xrds.Ku.values[:,k,:])
+
+        da = xr.DataArray(ku_out,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+        self.xrds['Ku'] = da
+    
+    def mask_BB(self):
+        
+        ldr = np.ma.masked_where(np.isnan(self.xrds.Ku.values),self.xrds.LDR.values)
+        bb = precip_echo_filt3D(ldr,thresh=7)
+        ind1 = np.where(bb[12,:] == 1) #BB profiles based on LDR
+        top_a = find_bb(self.xrds,ind1)
+        bb_long = extend_bb(ind1,self.xrds.time3d.values[0,12,:],top_a)
+        ku_new  = np.ma.masked_where(self.xrds.alt3d.values <= bb_long,self.xrds.Ku.values)
+        da = xr.DataArray(ku_new,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+        
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+        self.xrds['Ku'] = da
+        
+def find_bb(ds,ind1):
+    ku = np.squeeze(ds.Ku.values[:,12,ind1])
+    alt = np.squeeze(ds.alt3d.values[:,12,ind1])
+    surf = ds.surf.values[12,ind1]
+    ind = np.isnan(ku) 
+    ku[ind] = 0
+    ku = scipy.ndimage.gaussian_filter(ku,5)
+    top_a = np.zeros(ku.shape[1])
+    for i in np.arange(0,ku.shape[1]):
+        a = i
+        ku_prof = 10**(ku[:,a]/10.)
+        alt_prof = alt[:,a]
+
+        filt = scipy.ndimage.sobel(ku_prof)
+        filtfilt = scipy.ndimage.sobel(filt)
+        filtfiltfilt = scipy.ndimage.sobel(filtfilt)
+        k_func1 = scipy.interpolate.interp1d(alt_prof,ku_prof,kind='cubic',bounds_error=False)
+        k_func2 = scipy.interpolate.interp1d(alt_prof,filtfilt,kind='cubic',bounds_error=False) 
+        alt_new = np.linspace(alt_prof.min(),alt_prof.max(),1000)
+        ku_interp = k_func1(alt_new)
+        der2 = k_func2(alt_new)
+        bbmax = np.where(ku_interp == ku_interp.max())
+
+        ind = np.where(alt_new >= alt_new[bbmax])
+        ind2 = np.where(alt_new <= alt_new[bbmax]+500)
+        ind3 = np.intersect1d(ind,ind2)
+
+        der2_sub = der2[ind3]
+        alt_sub = alt_new[ind3]
+
+        k_func3 = scipy.interpolate.interp1d(alt_sub,der2_sub,kind='cubic',bounds_error=False)
+        try:
+            top  = scipy.optimize.bisect(k_func3,alt_sub[0],alt_sub[-1])
+        except:
+            top  = scipy.optimize.bisect(k_func3,alt_sub[0],alt_sub[-1]+100)
+
+        top_a[a] = top
+
+    #clean up top 
+    ind = np.where(np.abs(top_a-np.percentile(top_a,50)) >= 300)
+    top_a[ind] = np.percentile(top_a,50)
+
+    return top_a
+
+def extend_bb(ind,R,bb_center):
+
+    tots = np.arange(0,len(R))
+    ex = np.setdiff1d(tots,ind)
+    both = np.intersect1d(ind,tots)
+
+    bb_long = np.ma.zeros(len(R))
+    bb_long[ind] = bb_center
+    for i in np.arange(0,len(ex)):
+        t = ex[i]
+        index = find_nearest(ind[0],t)
+        bb_long[t] = bb_long[ind[0][index]]
+    
+    return bb_long
+        
+def precip_echo_filt3D(ku,thresh=5):
+    """
+    
+    This function provides a filter for APR3 data to determine if there exists a precip echo in the column. Only preforms it 
+    on one scan at a time. Could easily go up to all scans. 
+    
+    MAKE SURE TO APPLY masking routines first... 
+    
+    """
+    precip_yn = np.zeros([ku.shape[1],ku.shape[2]])
+    for k in np.arange(0,ku.shape[1]):
+        for j in np.arange(0,ku.shape[2]):
+            flag1 = 0 
+            c1 = -1
+            i = -1
+            start_flag = 0
+            while flag1 == 0:
+                i = i + 1
+
+                if c1 >= thresh:
+                    precip_yn[k,j] = 1
+                    break
+                if i == 550: 
+                    precip_yn[k,j] = 0
+                    break
+
+                t = ku[i,k,j]
+
+                if start_flag ==0:
+                    if np.ma.is_masked(t):
+                        continue
+                    else:
+                        start_flag = 1
+                        c1 = c1 + 1
+                else:
+                    if np.ma.is_masked(t):
+                        start_flag = 0
+                        c1 = -1
+                        continue
+                    else:
+                        c1 = c1 + 1
+    return precip_yn
         
 def find_nearest(array,value):
     idx = (np.abs(array-value)).argmin()
