@@ -893,21 +893,6 @@ class APR():
                 radar3 = np.ma.masked_where(radar3==0,radar3)
                 w_flag = 1
                 print('No W band')
-
-            ##convert time to datetimes
-            time_dates = np.empty(time.shape,dtype=object)
-            for i in np.arange(0,time.shape[0]):
-                for j in np.arange(0,time.shape[1]):
-                    tmp = datetime.datetime.utcfromtimestamp(time[i,j])
-                    time_dates[i,j] = tmp
-
-            #Create a time at each gate (assuming it is the same down each ray, there is a better way to do this)      
-            time_gate = np.empty(lat3d.shape,dtype=object)
-            for k in np.arange(0,550):
-                for i in np.arange(0,time_dates.shape[0]):
-                    for j in np.arange(0,time_dates.shape[1]):
-                        time_gate[k,i,j] = time_dates[i,j]       
-
             #Quality control (masked where invalid)
             radar_n = np.ma.masked_where(radar <= -99,radar)
             radar_n2 = np.ma.masked_where(radar2 <= -99,radar2)
@@ -920,7 +905,67 @@ class APR():
             radar_n3 = np.ma.masked_where(np.isnan(radar_n3),radar_n3)
             radar_n4 = np.ma.masked_where(np.isnan(radar_n4),radar_n4)
 
+        if campaign == 'camp2ex':
+            ##Radar varibles in hdf file found by hdf.datasets
+            radar_freq = 'zhh14' #Ku
+            radar_freq2 = 'zhh35' #Ka
+            radar_freq3 = 'zhh95' #W
+            radar_freq4 = 'ldrhh14' #LDR
+            vel_str = 'vel14' #Doppler
+            ##
+            
+            import h5py
+            hdf = h5py.File(filename,"r")
 
+            listofkeys = hdf['lores'].keys()
+            alt = hdf['lores']['alt3D'][:]
+            lat = hdf['lores']['lat'][:]
+            lon = hdf['lores']['lon'][:]
+            time = hdf['lores']['scantime'][:]
+            surf = hdf['lores']['surface_index'][:]
+            isurf =  hdf['lores']['isurf'][:]
+            plane =  hdf['lores']['alt_nav'][:]
+            radar = hdf['lores'][radar_freq][:]
+            radar2 = hdf['lores'][radar_freq2][:]
+            radar4 = hdf['lores'][radar_freq4][:]
+            vel = hdf['lores'][vel_str][:]
+            lon3d = hdf['lores']['lon3D'][:]
+            lat3d = hdf['lores']['lat3D'][:]
+            alt3d = hdf['lores']['alt3D'][:]
+            roll = hdf['lores']['roll'][:]
+
+            #see if there is W band
+            if 'z95s' in listofkeys:
+                if 'z95n' in listofkeys:
+                    radar_nadir = hdf['lores']['z95n'][:]
+                    radar_scanning = hdf['lores']['z95s'][:]
+                    radar3 = radar_scanning
+                    w_flag = 1
+                    ##uncomment if you want high sensativty as nadir scan (WARNING, CALIBRATION)
+                    #radar3[:,12,:] = radar_nadir[:,12,:]
+                else:
+                    radar3 = hdf['lores']['z95s'][:]
+                    print('No vv, using hh')
+            else:
+                radar3 = np.ma.zeros(radar.shape)
+                radar3 = np.ma.masked_where(radar3==0,radar3)
+                w_flag = 1
+                print('No W band')
+      
+
+            #Quality control (masked where invalid)
+            radar_n = np.ma.masked_where(radar <= -99,radar)
+            radar_n2 = np.ma.masked_where(radar2 <= -99,radar2)
+            radar_n3 = np.ma.masked_where(radar3 <= -99,radar3)
+            radar_n4 = np.ma.masked_where(radar4 <= -99,radar4)
+
+            #Get rid of nans, the new HDF has builtin
+            radar_n = np.ma.masked_where(np.isnan(radar_n),radar_n)
+            radar_n2 = np.ma.masked_where(np.isnan(radar_n2),radar_n2)
+            radar_n3 = np.ma.masked_where(np.isnan(radar_n3),radar_n3)
+            radar_n4 = np.ma.masked_where(np.isnan(radar_n4),radar_n4)
+            
+            
         ##convert time to datetimes
         time_dates = np.empty(time.shape,dtype=object)
         for i in np.arange(0,time.shape[0]):
@@ -930,7 +975,7 @@ class APR():
 
         #Create a time at each gate (assuming it is the same down each ray, there is a better way to do this)      
         time_gate = np.empty(lat3d.shape,dtype=object)
-        for k in np.arange(0,550):
+        for k in np.arange(0,lat3d.shape[0]):
             for i in np.arange(0,time_dates.shape[0]):
                 for j in np.arange(0,time_dates.shape[1]):
                     time_gate[k,i,j] = time_dates[i,j]        
@@ -1016,7 +1061,11 @@ class APR():
         #add to  xr dataset
         self.xrds['surf'] = da
         #
+        
+
     
+    
+            
     def determine_ground_lon_lat(self,near_surf_Z=True):
         
         mean_alt = self.xrds.alt3d.mean(axis=(1,2))
