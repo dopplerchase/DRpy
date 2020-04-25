@@ -20,7 +20,7 @@ This class is designed for reading hdf5 files from the NASA's Global Precipitati
 
 drpy.core.APR():
 
-This classe is designed for reading hdf5 files from the NASA's Airborne Precipitation Radar (mainly developed in OLYMPEX, so if you are using a different campaign beware, some dataset names might be different). 
+This class is designed for reading hdf5 files from the NASA's Airborne Precipitation Radar (mainly developed in OLYMPEX, so if you are using a different campaign beware, some dataset names might be different). 
 
 ############################################
 
