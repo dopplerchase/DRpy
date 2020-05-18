@@ -10,9 +10,19 @@ Dual-frequency precipitation Radar PYthon package (DRpy)
 
 (pronounced derpy)
 
-**NOTE: THIS IS IN ITS BETA VERSION AND IS NOT WORKABLE RIGHT NOW (27 Jan 2020)** 
+**NOTE: THIS IS IN ITS BETA VERSION (25 Apr 2020)** 
 
-This package is designed for reading hdf5 files from the NASA's Global Precipitation Measurement mission Dual-Frequency Precipitation Radar (GPM-DPR) into xarray datasets. 
+############################################
+
+drpy.core.GPMDPR():
+
+This class is designed for reading hdf5 files from the NASA's Global Precipitation Measurement mission Dual-Frequency Precipitation Radar (GPM-DPR) into xarray datasets. 
+
+drpy.core.APR():
+
+This class is designed for reading hdf5 files from the NASA's Airborne Precipitation Radar (mainly developed in OLYMPEX, so if you are using a different campaign beware, some dataset names might be different). 
+
+############################################
 
 The reason for creating this package is not to reinvent the wheel (i.e. h5py works just fine), but to allow users to access beneficial functions in xarray. 
 
