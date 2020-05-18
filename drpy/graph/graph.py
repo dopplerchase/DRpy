@@ -267,3 +267,57 @@ class GPMDPR_plot_obj():
             ax.invert_yaxis()
 
             plt.tight_layout()
+            
+class APR_plot_obj():
+    """Author: Randy J. Chase. This object has lots of built in plotting functions for the xarray dataset created by drpy.core.APR"""
+    def __init__(self,APR=None): 
+        if APR is None:
+            self.xrds = None
+        else:
+            self.xrds = APR.xrds
+            
+    def threepanel(self,ylim=[0,10000],vlim=[-10,40],vlim2=[-2,10]):
+    
+        fig,axes = plt.subplots(3,1,figsize=(5,10))
+        ax= axes[0]
+        pm = ax.pcolormesh(self.xrds.time3d[:,12,:],
+                           self.xrds.alt3d[:,12,:],self.xrds.Ku[:,12,:],
+                           cmap=cmaps.HomeyerRainbow,vmin=vlim[0],
+                           vmax=vlim[1])
+        
+        cbar = plt.colorbar(pm,ax=ax)
+        cbar.set_label('Z, [dBZ]')
+        ax.set_ylabel('Alt, [m]')
+        ax.set_title('Ku-band')
+        ax.set_ylim([ylim[0],ylim[1]])
+        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%H:%M"))
+
+        ax= axes[1]
+        pm = ax.pcolormesh(self.xrds.time3d[:,12,:],
+                           self.xrds.alt3d[:,12,:],self.xrds.Ka[:,12,:],
+                           cmap=cmaps.HomeyerRainbow,vmin=vlim[0],
+                           vmax=vlim[1])
+        
+        cbar = plt.colorbar(pm,ax=ax)
+        cbar.set_label('Z, [dBZ]')
+        ax.set_ylabel('Alt, [m]')
+        ax.set_title('Ka-band')
+        ax.set_ylim([ylim[0],ylim[1]])
+        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%H:%M"))
+
+        ax= axes[2]
+        pm = ax.pcolormesh(self.xrds.time3d[:,12,:],
+                           self.xrds.alt3d[:,12,:],self.xrds.Ku[:,12,:]-self.xrds.Ka[:,12,:],
+                           cmap=cmaps.turbo,vmin=vlim2[0],
+                           vmax=vlim2[1])
+        
+        cbar = plt.colorbar(pm,ax=ax)
+        cbar.set_label('DFR, [dB]')
+        ax.set_ylabel('Alt, [m]')
+        ax.set_title('Ka-band')
+        ax.set_ylim([ylim[0],ylim[1]])
+        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%H:%M"))
+
+        plt.tight_layout()
+
+        plt.show()

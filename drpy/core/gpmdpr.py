@@ -446,14 +446,14 @@ class GPMDPR():
         warnings.warn = warn
         
         #set number of threads = 1, this was crashing my parallel code
-        tf.config.threading.set_inter_op_parallelism_threads(1)
+#         tf.config.threading.set_inter_op_parallelism_threads(1)
         
         print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
         
         if path_to_models is None:
             print('Please insert path to NN models')
         else:
-            model_dual_T = tf.keras.models.load_model(path_to_models + 'NN_model_final.h5',custom_objects=None,compile=True)
+            model = tf.keras.models.load_model(path_to_models + 'NN_4by8.h5',custom_objects=None,compile=True)
             
             #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
             Ku = self.xrds.NSKu.values
@@ -483,13 +483,15 @@ class GPMDPR():
 
             #scale the input vectors by the mean that it was trained with
             X = np.zeros([Ku_nomask.shape[0],3])
-            X[:,0] = (10**(Ku_nomask/10) - scaler_X.mean_[0])/scaler_X.scale_[0]
-            X[:,1] = (10**(Ka_nomask/10)- scaler_X.mean_[1])/scaler_X.scale_[1]
-            X[:,2] = (T_nomask- scaler_X.mean_[2])/scaler_X.scale_[2]
+            X[:,0] = (Ku_nomask - scaler_X.mean_[0])/scaler_X.scale_[0] #ku 
+            X[:,1] = ((Ku_nomask - Ka_nomask)- scaler_X.mean_[1])/scaler_X.scale_[1] #dfr
+            X[:,2] = (T_nomask - scaler_X.mean_[2])/scaler_X.scale_[2] #T
             #
             
-            yhat = model_dual_T.predict(X[ind,0:3],batch_size=len(X[ind,0]))
+            yhat = model.predict(X[ind,0:3],batch_size=len(X[ind,0]))
             yhat = scaler_y.inverse_transform(yhat)
+            yhat[:,1] = 10**yhat[:,1] #unlog Dm liquid
+            yhat[:,2] = 10**yhat[:,2] #unlog Dm solid
             
             ind = np.where(Ku_nomask!=0)[0]
             Nw = np.zeros(Ku_nomask.shape)
@@ -837,12 +839,17 @@ class APR():
             #Quality control (use masked values
             radar_n = np.ma.masked_where(radar_n<=-99,radar_n)
             radar_n2 = np.ma.masked_where(radar_n2<=-99,radar_n2)
-            radar_n4 = np.ma.masked_where(radar_n4<=-99,radar_n4)
+            radar_n4 = np.ma.masked_where(radar_n4<=-99,radar_n4)          
+            vel = np.ma.masked_where(vel_n <= -99,vel_n)
+
+            #Get rid of nans, the new HDF has builtin
+            radar_n = np.ma.masked_where(np.isnan(radar_n),radar_n)
+            radar_n2 = np.ma.masked_where(np.isnan(radar_n2),radar_n2)
+            radar_n4 = np.ma.masked_where(np.isnan(radar_n4),radar_n4)
+            vel = np.ma.masked_where(np.isnan(vel),vel)
 
             radar_n3 = np.ma.zeros(radar_n.shape)
             radar_n3 = np.ma.masked_where(radar_n3 == 0,radar_n3)
-
-            vel_n = np.ma.masked_where(vel_n <= -99, vel_n)
         
         if campaign == 'olympex':
             
@@ -898,12 +905,14 @@ class APR():
             radar_n2 = np.ma.masked_where(radar2 <= -99,radar2)
             radar_n3 = np.ma.masked_where(radar3 <= -99,radar3)
             radar_n4 = np.ma.masked_where(radar4 <= -99,radar4)
+            vel = np.ma.masked_where(vel <= -99,vel)
 
             #Get rid of nans, the new HDF has builtin
             radar_n = np.ma.masked_where(np.isnan(radar_n),radar_n)
             radar_n2 = np.ma.masked_where(np.isnan(radar_n2),radar_n2)
             radar_n3 = np.ma.masked_where(np.isnan(radar_n3),radar_n3)
             radar_n4 = np.ma.masked_where(np.isnan(radar_n4),radar_n4)
+            vel = np.ma.masked_where(np.isnan(vel),vel)
 
         if campaign == 'camp2ex':
             ##Radar varibles in hdf file found by hdf.datasets
@@ -958,12 +967,14 @@ class APR():
             radar_n2 = np.ma.masked_where(radar2 <= -99,radar2)
             radar_n3 = np.ma.masked_where(radar3 <= -99,radar3)
             radar_n4 = np.ma.masked_where(radar4 <= -99,radar4)
+            vel = np.ma.masked_where(vel <= -99,vel)
 
             #Get rid of nans, the new HDF has builtin
             radar_n = np.ma.masked_where(np.isnan(radar_n),radar_n)
             radar_n2 = np.ma.masked_where(np.isnan(radar_n2),radar_n2)
             radar_n3 = np.ma.masked_where(np.isnan(radar_n3),radar_n3)
             radar_n4 = np.ma.masked_where(np.isnan(radar_n4),radar_n4)
+            vel = np.ma.masked_where(np.isnan(vel),vel)
             
             
         ##convert time to datetimes
@@ -1011,6 +1022,21 @@ class APR():
         
         #add to  xr dataset
         self.xrds['Ka'] = da
+        
+        da = xr.DataArray(vel,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                       'along_track':np.arange(radar_n.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],lon3d),
+                                  'lat3d':(['range','cross_track','along_track'],lat3d),
+                                  'time3d': (['range','cross_track','along_track'],time3d),
+                                  'alt3d':(['range','cross_track','along_track'],alt3d)})  
+        
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Doppler Vel'
+        
+        #add to  xr dataset
+        self.xrds['DopKu'] = da
         #
         
         da = xr.DataArray(radar_n3,
@@ -1183,30 +1209,22 @@ class APR():
 
         #scale the input vectors by the mean that it was trained with
         X = np.zeros([Ku_nomask.shape[0],3])
-        X[:,0] = (10**(Ku_nomask/10) - scaler_X.mean_[0])/scaler_X.scale_[0]
-        X[:,1] = (10**(Ka_nomask/10)- scaler_X.mean_[1])/scaler_X.scale_[1]
-        X[:,2] = (T_nomask- scaler_X.mean_[2])/scaler_X.scale_[2]
+        X[:,0] = (Ku_nomask - scaler_X.mean_[0])/scaler_X.scale_[0] #ku 
+        X[:,1] = ((Ku_nomask - Ka_nomask)- scaler_X.mean_[1])/scaler_X.scale_[1] #dfr
+        X[:,2] = (T_nomask - scaler_X.mean_[2])/scaler_X.scale_[2] #T
         #
 
         import tensorflow as tf
         from tensorflow.python.keras import losses
-        model_single = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_Zku_dualoutput_unrimed_NwDm.h5',
-                                                  custom_objects=None,compile=True)
-
-        model_dual = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_ZkuZka_dualoutput_unrimed_NwDm.h5',
-                                                custom_objects=None,compile=True)
-
-#         model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/dual_output/NN_ZkuZkaT_dualoutput_unrimed_NwDm.h5',custom_objects=None,
-#             compile=True)
-
-        model_dual_T = tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/tri_output/NN_ZkuZkaT_trioutput_unrimed_wholespecturm_nodropout_lrexp.h5',custom_objects=None,compile=True)
-
+        model=tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/tri_output/NN_4by8.h5',
+                                 custom_objects=None,compile=True)
         if self.T3d:
-            yhat = model_dual_T.predict(X[ind,0:3],batch_size=len(X[ind,0]))
+            yhat = model.predict(X[ind,0:3],batch_size=len(X[ind,0]))
             yhat = scaler_y.inverse_transform(yhat)
+            yhat[:,1] = 10**yhat[:,1]
+            yhat[:,2] = 10**yhat[:,2]
         else:
-            yhat = model_dual.predict(X[ind,0:2],batch_size=len(X[ind,0]))
-            yhat = scaler_y.inverse_transform(yhat)
+            print('ERROR, No temperautre data')
         
         ind = np.where(Ku_nomask!=0)[0]
         Nw = np.zeros(Ku_nomask.shape)
@@ -1287,10 +1305,152 @@ class APR():
 
         self.xrds['IWC'] = da
         
+    def get_legacy(self):
         
-    def cloudtopmask(self,sigma=1,mindBZ = 10):
-        import scipy.ndimage
+        from pickle import load
+        #load GPM-DPR v06 average relations 
+        reg_kupr = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/LinearRegression_KUPR.pkl', 'rb'))
+        reg_kapr = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/LinearRegression_KAPR.pkl', 'rb'))
+        #load newly trained exp relations
+        reg_ku = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/LinearRegression_KU.pkl', 'rb'))
+        reg_ka = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/LinearRegression_KA.pkl', 'rb'))
 
+        #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
+        Ku = 10**(self.xrds.Ku.values/10)
+        shape_step1 = Ku.shape
+        Ku = Ku.reshape([Ku.shape[0],Ku.shape[1]*Ku.shape[2]])
+        shape_step2 = Ku.shape
+        Ku = Ku.reshape([Ku.shape[0]*Ku.shape[1]])
+        Ka = 10**(self.xrds.Ka.values/10)
+        Ka = Ka.reshape([Ka.shape[0],Ka.shape[1]*Ka.shape[2]])
+        Ka = Ka.reshape([Ka.shape[0]*Ka.shape[1]])
+
+        ind_masked = np.isnan(Ku) 
+        Ku_nomask = np.zeros(Ku.shape)
+        Ka_nomask = np.zeros(Ka.shape)
+
+        Ku_nomask[~ind_masked] = Ku[~ind_masked]
+        Ka_nomask[~ind_masked] = Ka[~ind_masked]
+        ind = np.where(Ku_nomask!=0)[0]
+
+        #Do Ku-band relations 
+        X = np.zeros([Ku_nomask.shape[0],1])
+        X[:,0] = Ku_nomask
+
+        #kuexp 
+        yhat = 10**reg_ku.predict(np.log10(X[ind,:]))
+
+        IWC = np.zeros(Ku_nomask.shape)
+        IWC[ind] = np.squeeze(yhat)
+        IWC = IWC.reshape([shape_step2[0],shape_step2[1]])
+        IWC = IWC.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        IWC = np.ma.masked_where(IWC==0.0,IWC)
+
+        da = xr.DataArray(IWC,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'g m^-3'
+        da.attrs['standard_name'] = 'Retireved IWC from new exp (ku-band)'
+
+        self.xrds['IWC_kuexp'] = da
+
+        #kuprexp 
+        yhat = 10**reg_kupr.predict(np.log10(X[ind,:]))
+
+        IWC = np.zeros(Ku_nomask.shape)
+        IWC[ind] = np.squeeze(yhat)
+        IWC = IWC.reshape([shape_step2[0],shape_step2[1]])
+        IWC = IWC.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        IWC = np.ma.masked_where(IWC==0.0,IWC)
+
+        da = xr.DataArray(IWC,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'g m^-3'
+        da.attrs['standard_name'] = 'Retireved IWC from kupr exp'
+
+        self.xrds['IWC_kupr'] = da
+
+        #Do Ka-band relations 
+        X = np.zeros([Ku_nomask.shape[0],1])
+        X[:,0] = Ka_nomask
+
+        #kuexp 
+        yhat = 10**reg_ka.predict(np.log10(X[ind,:]))
+
+        IWC = np.zeros(Ku_nomask.shape)
+        IWC[ind] = np.squeeze(yhat)
+        IWC = IWC.reshape([shape_step2[0],shape_step2[1]])
+        IWC = IWC.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        IWC = np.ma.masked_where(IWC==0.0,IWC)
+
+        da = xr.DataArray(IWC,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'g m^-3'
+        da.attrs['standard_name'] = 'Retireved IWC from new exp (ka-band)'
+
+        self.xrds['IWC_kaexp'] = da
+
+        #kuprexp 
+        yhat = 10**reg_kapr.predict(np.log10(X[ind,:]))
+
+        IWC = np.zeros(Ku_nomask.shape)
+        IWC[ind] = np.squeeze(yhat)
+        IWC = IWC.reshape([shape_step2[0],shape_step2[1]])
+        IWC = IWC.reshape([shape_step1[0],shape_step1[1],shape_step1[2]])
+        IWC = np.ma.masked_where(IWC==0.0,IWC)
+
+        da = xr.DataArray(IWC,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'g m^-3'
+        da.attrs['standard_name'] = 'Retireved IWC from kapr exp'
+
+        self.xrds['IWC_kapr'] = da
+    def mask_lobe(self):
+        """ MASK SIDELOBES. This is a problem in GCPEX. NEED TO MAKE SURE THEY ARE GONE """ 
+        ku_new = np.ma.masked_where(np.ma.abs(self.xrds.DopKu.values) >= 10, self.xrds.Ku.values)
+        da = xr.DataArray(ku_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+
+        self.xrds['Ku'] = da
+        
+    def cloudtopmask(self,sigma=1,mindBZ = 10,mask_others=True):
+        import scipy.ndimage
         ku_temp = self.xrds.Ku.values 
         ku_temp[np.isnan(ku_temp)] = -99.99
         #Maskes Ku cloudtop noise
@@ -1322,7 +1482,132 @@ class APR():
 
         self.xrds['Ku'] = da
         
-    def mask_surf(self):
+        if mask_others:
+            ka_new = np.ma.masked_where(ku_new.mask,self.xrds.Ka.values)
+            da = xr.DataArray(ka_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+            self.xrds['Ka'] = da
+            
+            w_new = np.ma.masked_where(ku_new.mask,self.xrds.W.values)
+            da = xr.DataArray(w_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'W-band Reflectivity'
+
+            self.xrds['W'] = da
+
+    def rollfix(self):
+            roll = self.xrds.Roll.values
+            roll3d = roll[np.newaxis,:,:]
+            roll3d = np.tile(roll3d,(self.xrds.Ku.values.shape[0],1,1))
+            ku_new = np.ma.masked_where(np.abs(roll3d) > 10, self.xrds.Ku.values)
+            da = xr.DataArray(ku_new,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ku-band Reflectivity'
+            ka_new = np.ma.masked_where(ku_new.mask,self.xrds.Ka.values)
+            da = xr.DataArray(ka_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+            self.xrds['Ka'] = da
+            w_new = np.ma.masked_where(ku_new.mask,self.xrds.W.values)
+            da = xr.DataArray(w_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'W-band Reflectivity'
+            self.xrds['W'] = da
+            
+    def convolve_ku(self,x_stddev=1,y_stddev=1,x_size=3,y_size=3):
+        
+        from astropy.convolution import convolve
+        from astropy.convolution import Gaussian2DKernel
+        
+        kernel = Gaussian2DKernel(x_stddev=x_stddev,y_stddev=y_stddev,x_size=x_size,y_size=y_size)
+        ku = self.xrds.Ku.values
+        ku_new = np.zeros(ku.shape)
+        for i in np.arange(0,23):
+            ku_new[:,i,:] = convolve(ku[:,i,:].squeeze(),kernel)
+        ku_new = np.ma.masked_where(self.xrds.alt3d.values > 10000, ku_new)
+        da = xr.DataArray(ku_new,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+        self.xrds['Ku'] = da
+    def remove_skin_paint(self,n_convolutions=2,x_stddev=1,y_stddev=1,x_size=3,y_size=3):
+        """This is a method to remove aircraft skinpaints. LDR shouldn't be avail for any good snow echoes"""
+        from astropy.convolution import convolve
+        from astropy.convolution import Gaussian2DKernel
+
+        kernel = Gaussian2DKernel(x_stddev=x_stddev,y_stddev=y_stddev,x_size=x_size,y_size=y_size)
+        
+        ldr = self.xrds.LDR.values
+        for j in np.arange(0,n_convolutions):
+            ldr_new = np.zeros(ldr.shape)
+            for i in np.arange(0,23):
+                ldr_new[:,i,:] = convolve(ldr[:,i,:].squeeze(),kernel)
+
+            ldr = np.copy(ldr_new)
+
+        ku = self.xrds.Ku.values
+        ku_new = np.ma.masked_where(~np.isnan(ldr_new),ku)
+        da = xr.DataArray(ku_new,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+        self.xrds['Ku'] = da
+        
+    def mask_surf(self,mask_others=True):
         k = 12
         ku_orig = self.xrds.Ku.values[:,k,:]
         ku_out = np.ma.zeros(self.xrds.Ku.shape)
@@ -1348,14 +1633,17 @@ class APR():
                 ku_orig[:,i] = ku_prof
             else:
                 ku_orig[ii:,i] = np.ma.masked
-
+        
         ku_out[:,k,:] = ku_orig
 
         for k in np.arange(0,24):
             if k == 12:
                 continue
             ku_out[:,k,:] = np.ma.masked_where(ku_out[:,12,:].mask,self.xrds.Ku.values[:,k,:])
-
+        
+        if self.campaign=='gcpex':
+            ku_out = np.ma.masked_where(self.xrds.alt3d.values < 600,ku_out)
+            
         da = xr.DataArray(ku_out,
                           dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
                                 'along_track':np.arange(self.xrds.Ku.shape[2])},
@@ -1368,14 +1656,47 @@ class APR():
         da.attrs['units'] = 'dBZ'
         da.attrs['standard_name'] = 'Ku-band Reflectivity'
         self.xrds['Ku'] = da
+        
+        if mask_others:
+            ka_new = np.ma.masked_where(ku_out.mask,self.xrds.Ka.values)
+            da = xr.DataArray(ka_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+            self.xrds['Ka'] = da
+            
+            w_new = np.ma.masked_where(ku_out.mask,self.xrds.W.values)
+            da = xr.DataArray(w_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'W-band Reflectivity'
+
+            self.xrds['W'] = da
     
-    def mask_BB(self):
+    def mask_BB(self,mask_others=True):
         
         ldr = np.ma.masked_where(np.isnan(self.xrds.Ku.values),self.xrds.LDR.values)
         bb = precip_echo_filt3D(ldr,thresh=7)
         ind1 = np.where(bb[12,:] == 1) #BB profiles based on LDR
         top_a = find_bb(self.xrds,ind1)
         bb_long = extend_bb(ind1,self.xrds.time3d.values[0,12,:],top_a)
+        #store bb_long for constraining Citation 
+        self.bb_long = bb_long 
         ku_new  = np.ma.masked_where(self.xrds.alt3d.values <= bb_long,self.xrds.Ku.values)
         da = xr.DataArray(ku_new,
                   dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
@@ -1390,6 +1711,75 @@ class APR():
         da.attrs['standard_name'] = 'Ku-band Reflectivity'
         self.xrds['Ku'] = da
         
+        if mask_others:
+            ka_new = np.ma.masked_where(ku_new.mask,self.xrds.Ka.values)
+            da = xr.DataArray(ka_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+            self.xrds['Ka'] = da
+            
+            w_new = np.ma.masked_where(ku_new.mask,self.xrds.W.values)
+            da = xr.DataArray(w_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'W-band Reflectivity'
+
+            self.xrds['W'] = da
+         
+
+    def mask_each_other(self):
+        """ Make sure the Ku and Ka band radar are masked in the same spots """
+        
+        ku = np.copy(self.xrds.Ku.values)
+        ka = np.copy(self.xrds.Ka.values)
+
+        ka_new = np.ma.masked_where(np.isnan(ku),ka)
+        ku_new = np.ma.masked_where(np.isnan(ka_new),ku)
+
+        da = xr.DataArray(ka_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+        self.xrds['Ka'] = da
+
+        da = xr.DataArray(ku_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+
+        self.xrds['Ku'] = da
+            
 def find_bb(ds,ind1):
     ku = np.squeeze(ds.Ku.values[:,12,ind1])
     alt = np.squeeze(ds.alt3d.values[:,12,ind1])
