@@ -193,7 +193,27 @@ class GPMDPR():
 
             #make xr dataset
             self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
-                #
+            #
+            
+            #ADD BBtop and Bottom 
+            da = xr.DataArray(self.hdf['NS']['CSF']['binBBTop'][:,12:37], dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'ind of BBtop'
+            self.xrds['binBBTop'] = da
+            
+            da = xr.DataArray(self.hdf['NS']['CSF']['binBBBottom'][:,12:37], dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'ind of BBtop'
+            self.xrds['binBBBottom'] = da
+            
 
             da = xr.DataArray(self.hdf['MS']['PRE']['flagPrecip'][:,:], dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
@@ -250,6 +270,17 @@ class GPMDPR():
                 da = da.where(self.xrds.clutter==0)
             da = da.where(da >= 12)
             self.xrds['NSKu_c'] = da
+            
+            da = xr.DataArray(self.hdf['NS']['SLV']['epsilon'][:,12:37,:],dims=['along_track', 'cross_track','range'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr),
+                                               'alt':(['along_track', 'cross_track','range'],self.height)})
+            da.fillna(value=-9999.9)
+            da = da.where(da >= 0)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'epsilon value for retrieval'
+            self.xrds['epsilon'] = da
 
             da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrected'][:,:,:], dims=['along_track', 'cross_track','range'],
                                        coords={'lons': (['along_track','cross_track'],lons),
@@ -1087,10 +1118,6 @@ class APR():
         #add to  xr dataset
         self.xrds['surf'] = da
         #
-        
-
-    
-    
             
     def determine_ground_lon_lat(self,near_surf_Z=True):
         
@@ -1176,7 +1203,65 @@ class APR():
         self.xrds['T3d'] = da
         #
        
+    def correct_gaseous(self,filepathtogasploutput=None):
+        """ This is a method to correct for 02 and H20 attenuation at Ku and Ka band, it requires you to run the gaspl package in matlab. If you wish to learn about this, please email me randyjc2 at illinois.edu """
+        
+        if filepathtogasploutput is None:
+            print('Please supply filepath to gaspl output')
+        
+            return
+        
+        import scipy.io 
+        import scipy.interpolate
+        d = scipy.io.loadmat(filepathtogasploutput)
+        #create interp funcs so we can plug in the apr gate structure
+        ka_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L'].ravel(),kind='cubic',bounds_error=False) 
+        ku_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L2'].ravel(),kind='cubic',bounds_error=False)
+        
+        k_ku = ku_func(self.xrds.alt3d.values)
+        k_ka = ka_func(self.xrds.alt3d.values)
 
+        k_ku = k_ku*0.03 #conver to db/gate
+        k_ka = k_ka*0.03 #conver to db/gate
+
+        k_ku[np.isnan(k_ku)] = 0
+        k_ka[np.isnan(k_ka)] = 0
+
+        k_ku = 2*np.cumsum(k_ku,axis=(0))
+        k_ka = 2*np.cumsum(k_ka,axis=(0))
+        
+        ku_new = self.xrds.Ku.values + k_ku 
+        da = xr.DataArray(ku_new,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+
+        self.xrds['Ku'] = da
+        
+        ka_new = self.xrds.Ka.values + k_ka
+        da = xr.DataArray(ka_new,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+        self.xrds['Ka'] = da
+        
+        return
+        
     def run_retrieval(self):
         
         from pickle import load
@@ -1577,6 +1662,7 @@ class APR():
         da.attrs['units'] = 'dBZ'
         da.attrs['standard_name'] = 'Ku-band Reflectivity'
         self.xrds['Ku'] = da
+        
     def remove_skin_paint(self,n_convolutions=2,x_stddev=1,y_stddev=1,x_size=3,y_size=3):
         """This is a method to remove aircraft skinpaints. LDR shouldn't be avail for any good snow echoes"""
         from astropy.convolution import convolve
@@ -1606,6 +1692,40 @@ class APR():
         da.attrs['units'] = 'dBZ'
         da.attrs['standard_name'] = 'Ku-band Reflectivity'
         self.xrds['Ku'] = da
+        
+    def remove_skin_paint_mannual(self,xind=[0,0],yind=[0,0],zind=[0,0]):
+        """ indices are determined from near nadir """
+        import scipy.interpolate
+        ku = np.copy(self.xrds.Ku.values[:,:,:])
+        for z in np.arange(zind[0],zind[1]):
+            for y in np.arange(0,23):
+                f = scipy.interpolate.interp1d(np.arange(0,550),
+                                               self.xrds.alt3d.values[:,12,z+self.ind_start],
+                                               bounds_error=False) #find the alt of the index at nadir
+                f2 = scipy.interpolate.interp1d(self.xrds.alt3d.values[:,y,z+self.ind_start],
+                                               np.arange(0,550),
+                                               bounds_error=False) #find the index of the alt off nadir 
+                alt_rm = f(xind[0])
+                ind_adjust = f2(alt_rm)
+                ind_low = np.asarray(np.round(ind_adjust),dtype=int)
+
+                alt_rm = f(xind[1])
+                ind_adjust = f2(alt_rm)
+                ind_high = np.asarray(np.round(ind_adjust),dtype=int)
+                ku[ind_low:ind_high,y,z+self.ind_start] = np.nan  
+
+        da = xr.DataArray(ku,
+                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                        'along_track':np.arange(self.xrds.Ku.shape[2])},
+                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+        da.fillna(value=-9999)
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+        self.xrds['Ku'] = da   
         
     def mask_surf(self,mask_others=True):
         k = 12

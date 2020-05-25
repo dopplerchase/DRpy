@@ -48,10 +48,12 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
         df = df2.where(df2.values >= mincnt).dropna()
         C = np.ones([xedge.shape[0]-1,yedge.shape[0]-1])*-9999
         for i,ii in enumerate(df.index.values):
+            #dont plot points outside the bounds
             if (ii[0]==0) or (ii[1] == 0) or (ii[0] >= len(xedge)-1) or (ii[1] >= len(yedge)-1):
                 pass
             else:
-                C[ii[0],ii[1]] = df.c.values[i]
+                #shift indexs so that bin 1 is actually bin 0. 
+                C[ii[0]-1,ii[1]-1] = df.c.values[i]
         C = np.ma.masked_where(C == -9999,C)
         
         if normed:
@@ -101,10 +103,12 @@ def boxbin(x,y,xedge,yedge,c=None,figsize=(5,5),cmap='viridis',mincnt=10,vmin=No
         df = df2.where(df2.Count >= mincnt).dropna()
         C = np.ones([xedge.shape[0]-1,yedge.shape[0]-1])*-9999
         for i,ii in enumerate(df.index.values):
+            #dont plot points outside the bounds
             if (ii[0]==0) or (ii[1] == 0) or (ii[0] >= len(xedge)-1) or (ii[1] >= len(yedge)-1):
                 pass
             else:
-                C[ii[0],ii[1]] = df.c.values[i]
+                #shift indexs so that bin 1 is actually bin 0.
+                C[ii[0]-1,ii[1]-1] = df.c.values[i]
 
         C = np.ma.masked_where(C == -9999,C)
 

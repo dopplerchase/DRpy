@@ -276,12 +276,12 @@ class APR_plot_obj():
         else:
             self.xrds = APR.xrds
             
-    def threepanel(self,ylim=[0,10000],vlim=[-10,40],vlim2=[-2,10]):
+    def threepanel(self,ylim=[0,10000],vlim=[-10,40],vlim2=[-2,10],scan=12):
     
         fig,axes = plt.subplots(3,1,figsize=(5,10))
         ax= axes[0]
-        pm = ax.pcolormesh(self.xrds.time3d[:,12,:],
-                           self.xrds.alt3d[:,12,:],self.xrds.Ku[:,12,:],
+        pm = ax.pcolormesh(self.xrds.time3d[:,scan,:],
+                           self.xrds.alt3d[:,scan,:],self.xrds.Ku[:,scan,:],
                            cmap=cmaps.HomeyerRainbow,vmin=vlim[0],
                            vmax=vlim[1])
         
@@ -293,8 +293,8 @@ class APR_plot_obj():
         ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%H:%M"))
 
         ax= axes[1]
-        pm = ax.pcolormesh(self.xrds.time3d[:,12,:],
-                           self.xrds.alt3d[:,12,:],self.xrds.Ka[:,12,:],
+        pm = ax.pcolormesh(self.xrds.time3d[:,scan,:],
+                           self.xrds.alt3d[:,scan,:],self.xrds.Ka[:,scan,:],
                            cmap=cmaps.HomeyerRainbow,vmin=vlim[0],
                            vmax=vlim[1])
         
@@ -306,8 +306,8 @@ class APR_plot_obj():
         ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%H:%M"))
 
         ax= axes[2]
-        pm = ax.pcolormesh(self.xrds.time3d[:,12,:],
-                           self.xrds.alt3d[:,12,:],self.xrds.Ku[:,12,:]-self.xrds.Ka[:,12,:],
+        pm = ax.pcolormesh(self.xrds.time3d[:,scan,:],
+                           self.xrds.alt3d[:,scan,:],self.xrds.Ku[:,scan,:]-self.xrds.Ka[:,scan,:],
                            cmap=cmaps.turbo,vmin=vlim2[0],
                            vmax=vlim2[1])
         
