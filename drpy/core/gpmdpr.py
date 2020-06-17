@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-
 import xarray as xr 
 import h5py 
 import numpy as np
@@ -7,6 +6,10 @@ import pandas as pd
 import datetime
 import scipy
 import scipy.interpolate
+
+#turn off warnings so i can use the progressbar
+import warnings
+warnings.filterwarnings('ignore')
 
 
 
@@ -98,35 +101,6 @@ class GPMDPR():
 
         self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
         
-    def calcAltASL(self):
-        """
-        This method calculates the height of each radar gate above sea level.
-        **I am not 100% this is exactly correct. Please use at your own risk! **
-        This is derived from some old code for TRMM (e.g., Stephen Nesbitt), but 
-        updated with the GPM-DPR geometry 
-        
-        """
-
-
-        x2 = 2. * 17 #total degrees is 48 (from -17 to +17)
-        re = 6378. #radius of the earth km 
-        theta = -1 *(x2/2.) + (x2/48.)*np.arange(0,49) #break the -17 to 17 into equal degrees 
-
-        theta2 = np.zeros(theta.shape[0]+1)
-        theta = theta - 0.70833333/2. #shift thing to get left edge for pcolors
-        theta2[:-1] = theta 
-        theta2[-1] = theta[-1] + 0.70833333
-        theta = theta2 * (np.pi/180.) #convert to radians
-
-        prh = np.zeros([self.hdf['NS']['Longitude'][:,12:37].shape[0],49,176]) #set up matrix 
-        for i in np.arange(0,176): #loop over num range gates
-            for j in np.arange(0,49): #loop over scans 
-                a = np.arcsin(((re+407)/re)*np.sin(theta[j]))-theta[j] #407 km is the orbit height, re radius of earth, 
-                prh[:,j,i] = (176-(i))*0.125*np.cos(theta[j]+a) #more geometry 
-
-        #reshape it into the same shape as the radar 
-        self.height = prh[:,12:37,:]
-        
     def toxr(self,ptype=None,clutter=True,echotop=True):
         """
         This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
@@ -152,7 +126,6 @@ class GPMDPR():
         #first thing first, check to make sure there are points in the bounding box.
         #cut points to make sure there are points in your box.This should save you time. 
         if self.corners is not None:
-            
             #load data out of hdf
             lons = self.hdf['NS']['Longitude'][:,12:37]
             lats = self.hdf['NS']['Latitude'][:,12:37]
@@ -176,7 +149,10 @@ class GPMDPR():
                 self.parse_dtime()
 
             if self.height is None: 
-                self.calcAltASL()
+                height = xr.open_dataarray('/data/gpm/a/randyjc2/DRpy/drpy/models/HEIGHTS.nc')
+                height = height.values[np.newaxis,:,:]
+                height = np.tile(height,(self.hdf['NS']['Longitude'].shape[0],1,1))
+                self.height = height
                 
             if self.corners is None:
                 #load data out of hdf
@@ -227,8 +203,25 @@ class GPMDPR():
             self.xrds['flagPrecip'] = da
             #
             
-                
+            typePrecip = self.hdf['MS']['CSF']['typePrecip'][:]
+            typePrecip = np.asarray(typePrecip,dtype=float)
+            ind = np.where(typePrecip == -1111)
+            typePrecip[ind] = np.nan
+            ind = np.where(typePrecip == -9999)
+            typePrecip[ind] = np.nan
 
+            typePrecip = np.trunc(typePrecip/10000000)
+            typePrecip = np.asarray(typePrecip,dtype=int)
+
+            da = xr.DataArray(typePrecip, dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'flag to diagnose raintype. If 1: Strat. If 2: Conv. If 3:other '
+            
+            self.xrds['typePrecip'] = da
 
 
             if clutter:
@@ -379,14 +372,14 @@ class GPMDPR():
             if self.precip:
                 #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
                 self.xrds = self.xrds.where(self.xrds.flagPrecip==11)
-                if self.snow:
-                    self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
+#                 if self.snow:
+#                     self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
                     
             if self.corners is not None:
                 self.setboxcoords()
             
             #to reduce size of data, drop empty cross-track sections 
-            self.xrds = self.xrds.dropna(dim='along_track',how='all')
+#             self.xrds = self.xrds.dropna(dim='along_track',how='all')
             
             #as before, makes sure there is data...
             if self.xrds.along_track.shape[0]==0:
@@ -445,15 +438,13 @@ class GPMDPR():
         
         datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
         datestr = np.asarray(datestr,dtype=str)
-#         from IPython.core.debugger import Tracer; Tracer()() 
-#         print(datestr)
         datestr[ind] = '1970-01-01 00:00:00'
         datestr = np.reshape(datestr,[len(datestr),1])
         datestr = np.tile(datestr,(1,25))
 
         self.datestr = np.asarray(datestr,dtype=np.datetime64)
     
-    def run_retrieval(self,path_to_models=None):
+    def run_retrieval(self,path_to_models=None,old=False,notebook=False):
         
         """
         This method is a way to run our neural network trained retreival to get Dm in snowfall. 
@@ -462,13 +453,29 @@ class GPMDPR():
         This method requires the use of tensorflow. So go install that. 
         
         """
+        #load scalers
+        from pickle import load
+        if old:
+            scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
+            scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
+        else:
+            scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X_V2.pkl', 'rb'))
+            scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y_V2.pkl', 'rb'))
+
         import tensorflow as tf
         from tensorflow.python.keras import losses
         
-        #load scalers
-        from pickle import load
-        scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
-        scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
+        #set number of threads = 1, this was crashing my parallel code
+        if notebook:
+            pass
+        else:
+            tf.config.threading.set_inter_op_parallelism_threads(1)
+#         tf.config.threading.set_intra_op_parallelism_threads(1)
+#         print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
+
+
+        
+
         
         #supress warnings. skrews up my progress bar when running in parallel
         def warn(*args, **kwargs):
@@ -476,16 +483,16 @@ class GPMDPR():
         import warnings
         warnings.warn = warn
         
-        #set number of threads = 1, this was crashing my parallel code
-#         tf.config.threading.set_inter_op_parallelism_threads(1)
-        
-        print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
+
         
         if path_to_models is None:
             print('Please insert path to NN models')
         else:
-            model = tf.keras.models.load_model(path_to_models + 'NN_4by8.h5',custom_objects=None,compile=True)
-            
+            if old:
+                model = tf.keras.models.load_model(path_to_models + 'NN_4by8.h5',custom_objects=None,compile=True)
+            else:
+                model = tf.keras.models.load_model(path_to_models + 'NN_6by8.h5',custom_objects=None,compile=True)
+                
             #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
             Ku = self.xrds.NSKu.values
             shape_step1 = Ku.shape
@@ -597,8 +604,21 @@ class GPMDPR():
             self.xrds['IWC'] = da
             
             self.retrieval_flag = 1
-        
-    def get_merra(self,interp=True):
+    
+    def get_ENV(self,ENVFILENAME=None):
+        hdf_env = h5py.File(ENVFILENAME)
+        temperature = hdf_env['NS']['VERENV']['airTemperature'][:,12:37,:]
+        da = xr.DataArray(temperature, dims=['along_track', 'cross_track','range'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+
+        da.where(da > 0)
+        da.attrs['units'] =  'K'
+        da.attrs['standard_name'] = 'GPM-DPR ENV data'
+        self.xrds["T"] = da
+    def get_merra(self,interp1=True,interp2=False,getsurf=True):
         """
         This method matches up the *closest* MERRA-2 profiles. 
         To do so it uses the xarray.sel command. 
@@ -630,27 +650,69 @@ class GPMDPR():
         else:
             day = str(day)
 
-        ds_url = '/data/gpm/a/randyjc2/MERRA/NEW/'+ str(year) + '/' + 'MERRA2_400.inst6_3d_ana_Np.'+ str(year) + month + day+ '.nc4'
+        ds_url = '/data/gpm/a/randyjc2/MERRA/PROFILE/'+ str(year) + '/' + 'MERRA2_400.inst6_3d_ana_Np.'+ str(year) + month + day+ '.nc4'
 
         ###load file
-        merra = xr.open_dataset(ds_url)
+        merra = xr.open_dataset(ds_url,chunks={'lat': 361, 'lon': 576})
         ###
 
         #select the closest profile to the lat, lon, time
         sounding = merra.sel(lon=self.xrds.lons,lat=self.xrds.lats,time=self.xrds.time,method='nearest')
-
-        
+        sounding.load() 
         self.sounding = sounding
         
-        if interp:
+        if interp1:
             self.interp_MERRA(keyname='T')
             self.interp_MERRA(keyname='U')
             self.interp_MERRA(keyname='V')
             self.interp_MERRA(keyname='QV')
             self.interp_flag = 1
+        elif interp2:
+            self.interp_MERRA_V2(keyname='T')
+            self.interp_MERRA_V2(keyname='U')
+            self.interp_MERRA_V2(keyname='V')
+            self.interp_MERRA_V2(keyname='QV')
+            self.interp_flag = 1
             
-        merra.close()
-        
+        if getsurf:
+            ds_url ='/data/keeling/a/randyjc2/gpm/MERRA/SURF/'+ str(year) + '/' + 'MERRA2_400.tavg1_2d_slv_Nx.'+str(year) + month + day +'.nc4'
+
+            ###load file
+            merra = xr.open_dataset(ds_url)
+            ###
+
+            #select the closest profile to the lat, lon, time
+            gpmcoords = merra.sel(lon=self.xrds.lons,lat=self.xrds.lats,time=self.xrds.time,method='nearest')
+            da = xr.DataArray(gpmcoords.T2M.values, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+            da.attrs['units'] = gpmcoords.T2M.units
+            da.attrs['standard_name'] = gpmcoords.T2M.standard_name
+            self.xrds['T2M'] = da
+            
+            da = xr.DataArray(gpmcoords.T2MWET.values, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+            da.attrs['units'] = gpmcoords.T2MWET.units
+            da.attrs['standard_name'] = gpmcoords.T2MWET.standard_name
+            self.xrds['T2MWET'] = da
+            
+            da = xr.DataArray(gpmcoords.T2MDEW.values, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+            da.attrs['units'] = gpmcoords.T2MDEW.units
+            da.attrs['standard_name'] = gpmcoords.T2MDEW.standard_name
+            self.xrds['T2MDEW'] = da
+            
+            if self.snow:
+                self.xrds = self.xrds.where(self.xrds.T2MWET-273.15 <= 0)
+                #to reduce size of data, drop empty cross-track sections 
+                self.xrds = self.xrds.dropna(dim='along_track',how='all')
+                
+            
     def interp_MERRA(self,keyname=None):
         """ 
         This interpolates the MERRA data from the self.get_merra method, to the same veritcal levels as the GPM-DPR
@@ -679,7 +741,29 @@ class GPMDPR():
         da.attrs['units'] = self.sounding[keyname].units
         da.attrs['standard_name'] = 'Interpolated ' + self.sounding[keyname].standard_name + ' to GPM height coord'
         self.xrds[keyname] = da
+        return da
         
+    def interp_MERRA_V2(self,keyname=None):
+        """This is an effcient way of doing linear interpolation of the MERRA soundings """
+        x = self.sounding['H'].values
+        y = self.sounding[keyname].values
+        z = self.xrds.alt.values*1000 #convert to m 
+        interped = np.zeros(self.xrds.alt.values.shape)
+        for i in np.arange(0,25):
+            interped[:,i,:] = interp_2(x[:,i,:],y[:,i,:],z[0,i,:])
+
+        da = xr.DataArray(interped, dims=['along_track', 'cross_track','range'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time),
+                       'alt':(['along_track', 'cross_track','range'],self.xrds.alt)})
+
+        da.attrs['units'] = self.sounding[keyname].units
+        da.attrs['standard_name'] = 'Interpolated ' + self.sounding[keyname].standard_name + ' to GPM height coord'
+        self.xrds[keyname] = da
+        
+        return da
+    
     def extract_nearsurf(self):
         """
         Since we are often concerned with whats happening at the surface, this will extract the variables just above
@@ -712,12 +796,13 @@ class GPMDPR():
         
         if self.retrieval_flag == 1:
             self.grab_variable(keyname='Dm')
+            self.grab_variable(keyname='IWC')
 
-        if self.interp_flag == 1:
-            self.grab_variable(keyname='T')
-            self.grab_variable(keyname='U')
-            self.grab_variable(keyname='V')
-            self.grab_variable(keyname='QV')
+#         if self.interp_flag == 1:
+#             self.grab_variable(keyname='T')
+#             self.grab_variable(keyname='U')
+#             self.grab_variable(keyname='V')
+#             self.grab_variable(keyname='QV')
         
 
     def grab_variable(self,keyname=None):
@@ -780,6 +865,22 @@ class GPMDPR():
                 da.attrs['units'] = 'km'
                 da.attrs['standard_name'] = 'distance, way of the crow (i.e. direct), to the reference point'
                 self.xrds['distance'] = da
+                
+
+def interp_2(x, y, z):
+    """ This is from this discussion: https://stackoverflow.com/questions/14559687/scipy-fast-1-d-interpolation-without-any-loop"""
+    rows, cols = x.shape
+    row_idx = np.arange(rows).reshape((rows,) + (1,) * z.ndim)
+    col_idx = np.argmax(x.reshape(x.shape + (1,) * z.ndim) > z, axis=1) - 1
+    ret = y[row_idx, col_idx + 1] - y[row_idx, col_idx]
+    ret /= x[row_idx, col_idx + 1] - x[row_idx, col_idx]
+    ret *= z - x[row_idx, col_idx]
+    ret += y[row_idx, col_idx]
+    return ret
+             
+###############################################################################################################################
+###############################################################################################################################
+###############################################################################################################################
                 
 class APR():
     
@@ -1262,12 +1363,16 @@ class APR():
         
         return
         
-    def run_retrieval(self):
+    def run_retrieval(self,old=True):
         
         from pickle import load
-        scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
-        scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
-        
+        if old:
+            scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
+            scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
+        else:
+            scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X_V2.pkl', 'rb'))
+            scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y_V2.pkl', 'rb'))
+            
         #now we have to reshape things to make sure they are in the right shape for the NN model [n_samples,n_features]
         Ku = self.xrds.Ku.values
         shape_step1 = Ku.shape
@@ -1301,8 +1406,12 @@ class APR():
 
         import tensorflow as tf
         from tensorflow.python.keras import losses
-        model=tf.keras.models.load_model('/data/gpm/a/randyjc2/NN_trained_models/tri_output/NN_4by8.h5',
-                                 custom_objects=None,compile=True)
+        if old:
+            model=tf.keras.models.load_model('/data/gpm/a/randyjc2/DRpy/drpy/models/NN_4by8.h5',
+                                     custom_objects=None,compile=True)
+        else:
+            model=tf.keras.models.load_model('/data/gpm/a/randyjc2/DRpy/drpy/models/NN_6by8.h5',
+                                     custom_objects=None,compile=True)
         if self.T3d:
             yhat = model.predict(X[ind,0:3],batch_size=len(X[ind,0]))
             yhat = scaler_y.inverse_transform(yhat)
