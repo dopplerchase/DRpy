@@ -6,12 +6,10 @@ import pandas as pd
 import datetime
 import scipy
 import scipy.interpolate
-
+import os
 #turn off warnings so i can use the progressbar
 import warnings
 warnings.filterwarnings('ignore')
-
-
 
 class GPMDPR():
     """
@@ -90,8 +88,8 @@ class GPMDPR():
         keeper = np.reshape(keeper,[1,keeper.shape[0]])
         keeper = np.tile(keeper,(25,1))
         keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
-        keeper = np.tile(keeper,(self.xrds.NSKu_c.values.shape[0],1,1))
-        keeper[np.isnan(self.xrds.NSKu_c)] = 9999
+        keeper = np.tile(keeper,(self.xrds.MSKa_c.values.shape[0],1,1))
+        keeper[np.isnan(self.xrds.MSKa_c)] = 9999
 
         inds_to_pick = np.argmin(keeper,axis=2)
         dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
@@ -101,7 +99,7 @@ class GPMDPR():
 
         self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
         
-    def toxr(self,ptype=None,clutter=True,echotop=True):
+    def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10):
         """
         This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
         
@@ -222,7 +220,32 @@ class GPMDPR():
             da.attrs['standard_name'] = 'flag to diagnose raintype. If 1: Strat. If 2: Conv. If 3:other '
             
             self.xrds['typePrecip'] = da
-
+            
+            
+            #Get the phaseNearSurface (0 is snow, 1 is mixed 2, 2.55 is missing )
+            phaseNearSurface = self.hdf['NS']['SLV']['phaseNearSurface'][:,12:37]/100
+            phaseNearSurface[phaseNearSurface == 2.55] = -9999
+            phaseNearSurface =np.asarray(np.trunc(phaseNearSurface),dtype=int)
+            
+            da = xr.DataArray(phaseNearSurface, dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'flag to diagnose near surface phase. 0 is snow, 1 is mixed, 2 is rain. This is included to compare to Skofronick-Jackson 2019'
+            self.xrds['phaseNearSurface'] = da
+            
+            #Get the precipRateNearSurf (needed for skofronick-jackson 2019 comparison)
+            precipRateNearSurface = self.hdf['NS']['SLV']['precipRateNearSurface'][:,12:37]
+            da = xr.DataArray(precipRateNearSurface, dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'none'
+            da.attrs['standard_name'] = 'Near surface R from the GPM-DPR algo.'
+            self.xrds['precipRateNearSurface'] = da
 
             if clutter:
                 self.get_highest_clutter_bin()
@@ -308,7 +331,7 @@ class GPMDPR():
                 da = da.where(self.xrds.clutter==0)
             if echotop:
                 da = da.where(self.xrds.echotop==0)
-            da = da.where(da >= 12)
+            da = da.where(da >= 0)
             self.xrds['NSKu'] = da
 
             da = xr.DataArray(self.hdf['MS']['PRE']['zFactorMeasured'][:,:,:], dims=['along_track', 'cross_track','range'],
@@ -322,7 +345,7 @@ class GPMDPR():
                 da = da.where(self.xrds.clutter==0)
             if echotop:
                 da = da.where(self.xrds.echotop==0)
-            da = da.where(da >= 15)
+            da = da.where(da >= 0)
             self.xrds['MSKa'] = da
 
 
@@ -371,7 +394,7 @@ class GPMDPR():
 
             if self.precip:
                 #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
-                self.xrds = self.xrds.where(self.xrds.flagPrecip==11)
+                self.xrds = self.xrds.where(self.xrds.flagPrecip>=precipflag)
 #                 if self.snow:
 #                     self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
                     
@@ -444,7 +467,7 @@ class GPMDPR():
 
         self.datestr = np.asarray(datestr,dtype=np.datetime64)
     
-    def run_retrieval(self,path_to_models=None,old=False,notebook=False):
+    def run_retrieval(self,path_to_models=None,old=False):
         
         """
         This method is a way to run our neural network trained retreival to get Dm in snowfall. 
@@ -455,27 +478,22 @@ class GPMDPR():
         """
         #load scalers
         from pickle import load
+        import tensorflow as tf
+        from tensorflow.python.keras import losses
+        
+        #set number of threads = 1, this was crashing my parallel code, If in notebook comment this 
+        tf.config.threading.set_inter_op_parallelism_threads(1)
+#         tf.config.threading.set_intra_op_parallelism_threads(1)
+#         print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
+
+
+        
         if old:
             scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X.pkl', 'rb'))
             scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y.pkl', 'rb'))
         else:
             scaler_X = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_X_V2.pkl', 'rb'))
             scaler_y = load(open('/data/gpm/a/randyjc2/DRpy/drpy/models/scaler_y_V2.pkl', 'rb'))
-
-        import tensorflow as tf
-        from tensorflow.python.keras import losses
-        
-        #set number of threads = 1, this was crashing my parallel code
-        if notebook:
-            pass
-        else:
-            tf.config.threading.set_inter_op_parallelism_threads(1)
-#         tf.config.threading.set_intra_op_parallelism_threads(1)
-#         print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
-
-
-        
-
         
         #supress warnings. skrews up my progress bar when running in parallel
         def warn(*args, **kwargs):
@@ -604,7 +622,6 @@ class GPMDPR():
             self.xrds['IWC'] = da
             
             self.retrieval_flag = 1
-    
     def get_ENV(self,ENVFILENAME=None):
         hdf_env = h5py.File(ENVFILENAME)
         temperature = hdf_env['NS']['VERENV']['airTemperature'][:,12:37,:]
@@ -617,7 +634,7 @@ class GPMDPR():
         da.where(da > 0)
         da.attrs['units'] =  'K'
         da.attrs['standard_name'] = 'GPM-DPR ENV data'
-        self.xrds["T"] = da
+        self.xrds["T"] = da 
     def get_merra(self,interp1=True,interp2=False,getsurf=True):
         """
         This method matches up the *closest* MERRA-2 profiles. 
@@ -786,51 +803,150 @@ class GPMDPR():
 
         self.lowest_gate_index = np.ma.asarray(dummy_matrix,dtype=int)
 
-        self.grab_variable(keyname='NSKu')
-        self.grab_variable(keyname='NSKu_c')
-        self.grab_variable(keyname='MSKa')
-        self.grab_variable(keyname='MSKa_c')
-        self.grab_variable(keyname='R')
-        self.grab_variable(keyname='Dm_dpr')
-        self.grab_variable(keyname='alt')
+        self.grab_variable(keyname='NSKu',nearsurf=True)
+        self.grab_variable(keyname='NSKu_c',nearsurf=True)
+        self.grab_variable(keyname='MSKa',nearsurf=True)
+        self.grab_variable(keyname='MSKa_c',nearsurf=True)
+        self.grab_variable(keyname='R',nearsurf=True)
+        self.grab_variable(keyname='Dm_dpr',nearsurf=True)
+        self.grab_variable(keyname='alt',nearsurf=True)
         
         if self.retrieval_flag == 1:
-            self.grab_variable(keyname='Dm')
-            self.grab_variable(keyname='IWC')
-
-#         if self.interp_flag == 1:
-#             self.grab_variable(keyname='T')
-#             self.grab_variable(keyname='U')
-#             self.grab_variable(keyname='V')
-#             self.grab_variable(keyname='QV')
-        
-
-    def grab_variable(self,keyname=None):
+            self.grab_variable(keyname='Dm',nearsurf=True)
+            self.grab_variable(keyname='IWC',nearsurf=True)
+            
+        if self.interp_flag == 1:
+            self.grab_variable(keyname='T',nearsurf=True)
+            self.grab_variable(keyname='U',nearsurf=True)
+            self.grab_variable(keyname='V',nearsurf=True)
+            self.grab_variable(keyname='QV',nearsurf=True)
+            
+    def extract_echotop(self):
         """
-        This goes along with the self.extract_nearsurf()
+        What are the various parameters found at the echotop. Make sure you ran the echotop bit first. 
+        """
+        keeper = self.xrds.range.values
+        keeper = np.reshape(keeper,[1,keeper.shape[0]])
+        keeper = np.tile(keeper,(25,1))
+        keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+        #i'm using the Ka band as the echotop to ensure we have a retrieved param at echotop, not nan 
+        keeper = np.tile(keeper,(self.xrds.MSKa.values.shape[0],1,1))
+        keeper[np.isnan(self.xrds.MSKa.values)] = +9999
+
+        inds_to_pick = np.argmin(keeper,axis=2)
+        dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+
+        #note, for all nan columns, it will say its 0, or the top of the GPM index, which should alway be nan anyway
+        for i in np.arange(0,dummy_matrix.shape[0]):
+            for j in np.arange(0,dummy_matrix.shape[1]):
+                dummy_matrix[i,j,inds_to_pick[i,j]] = 1
+
+        self.highest_gate_index = np.ma.asarray(dummy_matrix,dtype=int)
+
+        self.grab_variable(keyname='NSKu',nearsurf=False)
+        self.grab_variable(keyname='NSKu_c',nearsurf=False)
+        self.grab_variable(keyname='MSKa',nearsurf=False)
+        self.grab_variable(keyname='MSKa_c',nearsurf=False)
+        self.grab_variable(keyname='R',nearsurf=False)
+        self.grab_variable(keyname='Dm_dpr',nearsurf=False)
+        self.grab_variable(keyname='alt',nearsurf=False)
+        
+        if self.retrieval_flag == 1:
+            self.grab_variable(keyname='Dm',nearsurf=False)
+            self.grab_variable(keyname='IWC',nearsurf=False)
+
+        if self.interp_flag == 1:
+            self.grab_variable(keyname='T',nearsurf=False)
+            self.grab_variable(keyname='U',nearsurf=False)
+            self.grab_variable(keyname='V',nearsurf=False)
+            self.grab_variable(keyname='QV',nearsurf=False)
+
+    def extract_echotopheight_ku(self):
+        """
+        What are the various parameters found at the echotop. Make sure you ran the echotop bit first. 
+        """
+        keeper = self.xrds.range.values
+        keeper = np.reshape(keeper,[1,keeper.shape[0]])
+        keeper = np.tile(keeper,(25,1))
+        keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+        keeper = np.tile(keeper,(self.xrds.NSKu.values.shape[0],1,1))
+        keeper[np.isnan(self.xrds.NSKu.values)] = +9999
+
+        inds_to_pick = np.argmin(keeper,axis=2)
+        dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+
+        #note, for all nan columns, it will say its 0, or the top of the GPM index, which should alway be nan anyway
+        for i in np.arange(0,dummy_matrix.shape[0]):
+            for j in np.arange(0,dummy_matrix.shape[1]):
+                dummy_matrix[i,j,inds_to_pick[i,j]] = 1
+
+        
+        ind = np.where(dummy_matrix == 0)
+        variable = np.zeros([self.xrds.along_track.shape[0],self.xrds.cross_track.values.shape[0]])
+        variable2 = np.zeros([self.xrds.along_track.shape[0],self.xrds.cross_track.values.shape[0]])
+        variable[ind[0],ind[1]] = np.nan
+        variable2[ind[0],ind[1]] = np.nan
+        ind = np.where(dummy_matrix == 1)
+        variable[ind[0],ind[1]] = self.xrds['alt'].values[ind[0],ind[1],ind[2]]
+        variable2[ind[0],ind[1]] = self.xrds['NSKu'].values[ind[0],ind[1],ind[2]]
+        da = xr.DataArray(variable, dims=['along_track', 'cross_track'],
+                          coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                                  'lats': (['along_track','cross_track'],self.xrds.lons),
+                                  'time': (['along_track','cross_track'],self.xrds.time)})
+        da.attrs['units'] = 'km'
+        da.attrs['standard_name'] = 'altitude of the KuPR echo top'
+        self.xrds['alt_echoTopKuPR'] = da
+        
+        da = xr.DataArray(variable2, dims=['along_track', 'cross_track'],
+                          coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                                  'lats': (['along_track','cross_track'],self.xrds.lons),
+                                  'time': (['along_track','cross_track'],self.xrds.time)})
+        da.attrs['units'] = 'dBZ'
+        da.attrs['standard_name'] = 'KuPR reflectvity at its echotop'
+        self.xrds['NSKu_echoTopKuPR'] = da
+            
+    def grab_variable(self,keyname=None,nearsurf=True,):
+        """
+        This goes along with the self.extract_nearsurf() or self.extract_echotop()
         """
 
         if keyname is None:
             print('please supply keyname')
         else:
             variable = np.zeros([self.xrds.along_track.shape[0],self.xrds.cross_track.values.shape[0]])
-            ind = np.where(self.lowest_gate_index == 0)
+            if nearsurf:
+                ind = np.where(self.lowest_gate_index == 0)
+            else:
+                ind = np.where(self.highest_gate_index == 0)
             variable[ind[0],ind[1]] = np.nan
-            ind = np.where(self.lowest_gate_index == 1)
+            if nearsurf:
+                ind = np.where(self.lowest_gate_index == 1)
+            else:
+                ind = np.where(self.highest_gate_index == 1)
+                
             variable[ind[0],ind[1]] = self.xrds[keyname].values[ind[0],ind[1],ind[2]]
             da = xr.DataArray(variable, dims=['along_track', 'cross_track'],
                        coords={'lons': (['along_track','cross_track'],self.xrds.lons),
                                'lats': (['along_track','cross_track'],self.xrds.lons),
                                'time': (['along_track','cross_track'],self.xrds.time)})
-            da = da.where(self.xrds.flagSurfaceSnow == 1)
-            if keyname=='alt':
-                da.attrs['units'] = 'km'
-                da.attrs['standard_name'] = 'altitude of the near-surface bin'
-                self.xrds[keyname+'_nearSurf'] = da
+            if nearsurf:
+                if keyname=='alt':
+                    da.attrs['units'] = 'km'
+                    da.attrs['standard_name'] = 'altitude of the near-surface bin'
+                    self.xrds[keyname+'_nearSurf'] = da
+                else:
+                    da.attrs['units'] = self.xrds[keyname].units
+                    da.attrs['standard_name'] = 'near-surface' + self.xrds[keyname].standard_name
+                    self.xrds[keyname+'_nearSurf'] = da
             else:
-                da.attrs['units'] = self.xrds[keyname].units
-                da.attrs['standard_name'] = 'near-surface' + self.xrds[keyname].standard_name
-                self.xrds[keyname+'_nearSurf'] = da
+                if keyname=='alt':
+                    da.attrs['units'] = 'km'
+                    da.attrs['standard_name'] = 'altitude of the echoTop'
+                    self.xrds[keyname+'_echoTop'] = da
+                else:
+                    da.attrs['units'] = self.xrds[keyname].units
+                    da.attrs['standard_name'] = 'echo-top' + self.xrds[keyname].standard_name
+                    self.xrds[keyname+'_echoTop'] = da
                 
     def get_physcial_distance(self,reference_point = None):
         """ 
@@ -865,7 +981,90 @@ class GPMDPR():
                 da.attrs['units'] = 'km'
                 da.attrs['standard_name'] = 'distance, way of the crow (i.e. direct), to the reference point'
                 self.xrds['distance'] = da
-                
+
+    def get_TMAX(self):
+        
+        #get the column max temperature in each profile
+        ind_tmax = (self.xrds['T'].argmax(axis=2)).values
+        #make the index the right shape
+        shp = np.array(self.xrds['T'].shape)
+        dim_idx = list(np.ix_(*[np.arange(i) for i in shp[:-1]]))
+        dim_idx.append(ind_tmax)
+        
+        #grab the temperature 
+        tmax = self.xrds['T'].values[tuple(dim_idx)]
+        #grab its altitude
+        alt = self.xrds['T'].alt.values
+        alt_tmax = alt[tuple(dim_idx)]
+        
+        #determine the lapse rate across the echo 
+        lapse = np.zeros(self.xrds.NSKu.shape)
+        #cut the last value
+        lapse[:,:,0] = np.nan
+        #grab the temps 
+        T_nan = np.copy(self.xrds['T'].values)
+        #nan out values outside the echo 
+        T_nan[np.isnan(self.xrds.NSKu.values)] = np.nan
+        #calc the lapse rate across the echo, convert to per km
+        lapse[:,:,1:] = np.diff(T_nan,axis=2)/0.125
+        #change sign 
+        lapse = lapse*-1
+        #take mean 
+        lapse2d = np.nanmean(lapse,axis=2)
+
+        #okay make stability flag 
+        orig_shape = lapse2d.shape
+        lapse2d = np.reshape(lapse2d,[orig_shape[0]*orig_shape[1]])
+        stability_flag = np.ones(lapse2d.shape,dtype=int)*-9999
+        
+        
+        abs_unstable = np.where(lapse2d <= -10)
+        stability_flag[abs_unstable] = 0
+        
+        ind_cond = np.where(lapse2d > -10)
+        ind_cond2 = np.where(lapse2d <= -6)
+        cond_unstable = np.intersect1d(ind_cond,ind_cond2)
+
+        stability_flag[cond_unstable] = 1
+
+        abs_stable = np.where(lapse2d > -6)
+        stability_flag[abs_stable] = 2
+        #make them 2d to put back into the dataset 
+        stability_flag = np.reshape(stability_flag,[orig_shape[0],orig_shape[1]])
+        lapse2d = np.reshape(lapse2d,[orig_shape[0],orig_shape[1]])
+
+        da = xr.DataArray(tmax, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+        da.attrs['units'] = 'K'
+        da.attrs['standard_name'] = 'Max temperature in the column'
+        self.xrds['TMAX'] = da
+        
+        da = xr.DataArray(alt_tmax, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+        da.attrs['units'] = 'km'
+        da.attrs['standard_name'] = 'Alt of max temperature'
+        self.xrds['TMAX_alt'] = da
+        
+        da = xr.DataArray(lapse2d, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+        da.attrs['units'] = 'deg C or deg K'
+        da.attrs['standard_name'] = 'Mean lapse rate across the NSKu echo'
+        self.xrds['lapse2d'] = da
+        
+        da = xr.DataArray(stability_flag, dims=['along_track', 'cross_track'],
+               coords={'lons': (['along_track','cross_track'],self.xrds.lons),
+                       'lats': (['along_track','cross_track'],self.xrds.lons),
+                       'time': (['along_track','cross_track'],self.xrds.time)})
+        da.attrs['units'] = 'none'
+        da.attrs['standard_name'] = 'Stability flag, 0 is absolutely unstable, 1 is cond. unstable, 2 is stable,-9999 means no precip echo'
+        self.xrds['stability_flag'] = da   
+        
 
 def interp_2(x, y, z):
     """ This is from this discussion: https://stackoverflow.com/questions/14559687/scipy-fast-1-d-interpolation-without-any-loop"""
@@ -1303,65 +1502,88 @@ class APR():
         #add to  xr dataset
         self.xrds['T3d'] = da
         #
-       
-    def correct_gaseous(self,filepathtogasploutput=None):
-        """ This is a method to correct for 02 and H20 attenuation at Ku and Ka band, it requires you to run the gaspl package in matlab. If you wish to learn about this, please email me randyjc2 at illinois.edu """
-        
-        if filepathtogasploutput is None:
-            print('Please supply filepath to gaspl output')
-        
+    def correct_gaseous(self,filepathtogasploutput=None,Wband=False):
+            """ This is a method to correct for 02 and H20 attenuation at Ku and Ka band, it requires you to run the gaspl package in matlab. If you wish to learn about this, please email me randyjc2 at illinois.edu """
+
+            if filepathtogasploutput is None:
+                print('Please supply filepath to gaspl output')
+
+                return
+
+            import scipy.io 
+            import scipy.interpolate
+            d = scipy.io.loadmat(filepathtogasploutput)
+            #create interp funcs so we can plug in the apr gate structure
+            ka_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L'].ravel(),kind='cubic',bounds_error=False) 
+            ku_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L2'].ravel(),kind='cubic',bounds_error=False)
+            
+            if Wband:
+                w_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L3'].ravel(),kind='cubic',bounds_error=False)
+
+            k_ku = ku_func(self.xrds.alt3d.values)
+            k_ka = ka_func(self.xrds.alt3d.values)
+
+            k_ku = k_ku*0.03 #conver to db/gate
+            k_ka = k_ka*0.03 #conver to db/gate
+
+            k_ku[np.isnan(k_ku)] = 0
+            k_ka[np.isnan(k_ka)] = 0
+
+            k_ku = 2*np.cumsum(k_ku,axis=(0))
+            k_ka = 2*np.cumsum(k_ka,axis=(0))
+
+            ku_new = self.xrds.Ku.values + k_ku 
+            da = xr.DataArray(ku_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ku-band Reflectivity'
+
+            self.xrds['Ku'] = da
+
+            ka_new = self.xrds.Ka.values + k_ka
+            da = xr.DataArray(ka_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+            self.xrds['Ka'] = da
+
+            if Wband:
+                k_w = w_func(self.xrds.alt3d.values)
+                k_w = k_w*0.03 
+                k_w[np.isnan(k_w)] = 0
+                k_w = 2*np.cumsum(k_w,axis=(0))
+
+                w_new = self.xrds.W.values + k_w
+                da = xr.DataArray(w_new,
+                          dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                'along_track':np.arange(self.xrds.Ku.shape[2])},
+                          coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                  'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                  'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                  'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+                da.fillna(value=-9999)
+                da.attrs['units'] = 'dBZ'
+                da.attrs['standard_name'] = 'W-band Reflectivity'
+
+                self.xrds['W'] = da
+
             return
-        
-        import scipy.io 
-        import scipy.interpolate
-        d = scipy.io.loadmat(filepathtogasploutput)
-        #create interp funcs so we can plug in the apr gate structure
-        ka_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L'].ravel(),kind='cubic',bounds_error=False) 
-        ku_func = scipy.interpolate.interp1d(d['alt'].ravel(),d['L2'].ravel(),kind='cubic',bounds_error=False)
-        
-        k_ku = ku_func(self.xrds.alt3d.values)
-        k_ka = ka_func(self.xrds.alt3d.values)
-
-        k_ku = k_ku*0.03 #conver to db/gate
-        k_ka = k_ka*0.03 #conver to db/gate
-
-        k_ku[np.isnan(k_ku)] = 0
-        k_ka[np.isnan(k_ka)] = 0
-
-        k_ku = 2*np.cumsum(k_ku,axis=(0))
-        k_ka = 2*np.cumsum(k_ka,axis=(0))
-        
-        ku_new = self.xrds.Ku.values + k_ku 
-        da = xr.DataArray(ku_new,
-                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
-                        'along_track':np.arange(self.xrds.Ku.shape[2])},
-                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
-                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
-                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
-                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
-
-        da.fillna(value=-9999)
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'Ku-band Reflectivity'
-
-        self.xrds['Ku'] = da
-        
-        ka_new = self.xrds.Ka.values + k_ka
-        da = xr.DataArray(ka_new,
-                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
-                        'along_track':np.arange(self.xrds.Ku.shape[2])},
-                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
-                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
-                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
-                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
-
-        da.fillna(value=-9999)
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'Ka-band Reflectivity'
-
-        self.xrds['Ka'] = da
-        
-        return
         
     def run_retrieval(self,old=True):
         
@@ -1643,9 +1865,15 @@ class APR():
 
         self.xrds['Ku'] = da
         
-    def cloudtopmask(self,sigma=1,mindBZ = 10,mask_others=True):
+    def cloudtopmask(self,sigma=1,mindBZ = 10,mask_others=True,freq='Ku'):
         import scipy.ndimage
-        ku_temp = self.xrds.Ku.values 
+        if freq =='Ku':
+            ku_temp = self.xrds.Ku.values 
+        elif freq =='Ka':
+            ku_temp = self.xrds.Ka.values 
+        elif freq == 'W':
+            ku_temp = self.xrds.W.values 
+            
         ku_temp[np.isnan(ku_temp)] = -99.99
         #Maskes Ku cloudtop noise
         ku_new = np.zeros(ku_temp.shape)
@@ -1662,7 +1890,55 @@ class APR():
         #new data has some weird data near plane. Delete manually
         ku_new = np.ma.masked_where(self.xrds.alt3d.values > 10000, ku_new)
         
-        da = xr.DataArray(ku_new,
+        if freq == 'Ku':
+            da = xr.DataArray(ku_new,
+                              dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                    'along_track':np.arange(self.xrds.Ku.shape[2])},
+                              coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                      'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                      'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                      'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ku-band Reflectivity'
+
+            self.xrds['Ku'] = da
+            
+        elif freq == 'Ka':
+            da = xr.DataArray(ku_new,
+                              dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                    'along_track':np.arange(self.xrds.Ku.shape[2])},
+                              coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                      'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                      'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                      'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+
+            self.xrds['Ka'] = da
+            
+        elif freq == 'W':
+            da = xr.DataArray(ku_new,
+                              dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                                    'along_track':np.arange(self.xrds.Ku.shape[2])},
+                              coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                                      'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                                      'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                                      'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'W-band Reflectivity'
+
+            self.xrds['W'] = da
+        
+        if mask_others:
+            
+            ku_new2 = np.ma.masked_where(ku_new.mask,self.xrds.Ku.values)
+            da = xr.DataArray(ku_new2,
                           dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
                                 'along_track':np.arange(self.xrds.Ku.shape[2])},
                           coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
@@ -1670,13 +1946,12 @@ class APR():
                                   'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
                                   'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
 
-        da.fillna(value=-9999)
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'Ku-band Reflectivity'
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ku-band Reflectivity'
 
-        self.xrds['Ku'] = da
-        
-        if mask_others:
+            self.xrds['Ku'] = da
+            
             ka_new = np.ma.masked_where(ku_new.mask,self.xrds.Ka.values)
             da = xr.DataArray(ka_new,
                           dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
@@ -1917,7 +2192,7 @@ class APR():
 
             self.xrds['W'] = da
     
-    def mask_BB(self,mask_others=True):
+    def mask_BB(self,mask_others=True,freq='Ku'):
         
         ldr = np.ma.masked_where(np.isnan(self.xrds.Ku.values),self.xrds.LDR.values)
         bb = precip_echo_filt3D(ldr,thresh=7)
@@ -1926,19 +2201,48 @@ class APR():
         bb_long = extend_bb(ind1,self.xrds.time3d.values[0,12,:],top_a)
         #store bb_long for constraining Citation 
         self.bb_long = bb_long 
-        ku_new  = np.ma.masked_where(self.xrds.alt3d.values <= bb_long,self.xrds.Ku.values)
-        da = xr.DataArray(ku_new,
-                  dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
-                        'along_track':np.arange(self.xrds.Ku.shape[2])},
-                  coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
-                          'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
-                          'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
-                          'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
-        
-        da.fillna(value=-9999)
-        da.attrs['units'] = 'dBZ'
-        da.attrs['standard_name'] = 'Ku-band Reflectivity'
-        self.xrds['Ku'] = da
+        if freq=='Ku':
+            ku_new  = np.ma.masked_where(self.xrds.alt3d.values <= bb_long,self.xrds.Ku.values)
+            da = xr.DataArray(ku_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ku-band Reflectivity'
+            self.xrds['Ku'] = da
+        elif freq=='Ka':
+            ku_new  = np.ma.masked_where(self.xrds.alt3d.values <= bb_long,self.xrds.Ka.values)
+            da = xr.DataArray(ku_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'Ka-band Reflectivity'
+            self.xrds['Ka'] = da
+        elif freq=='W':
+            ku_new  = np.ma.masked_where(self.xrds.alt3d.values <= bb_long,self.xrds.W.values)
+            da = xr.DataArray(ku_new,
+                      dims={'range':np.arange(0,550),'cross_track':np.arange(0,24),
+                            'along_track':np.arange(self.xrds.Ku.shape[2])},
+                      coords={'lon3d': (['range','cross_track','along_track'],self.xrds.lon3d),
+                              'lat3d': (['range','cross_track','along_track'],self.xrds.lat3d),
+                              'time3d': (['range','cross_track','along_track'],self.xrds.time3d),
+                              'alt3d':(['range','cross_track','along_track'],self.xrds.alt3d)})
+
+            da.fillna(value=-9999)
+            da.attrs['units'] = 'dBZ'
+            da.attrs['standard_name'] = 'W-band Reflectivity'
+            self.xrds[''] = da
         
         if mask_others:
             ka_new = np.ma.masked_where(ku_new.mask,self.xrds.Ka.values)
@@ -2114,3 +2418,5 @@ def precip_echo_filt3D(ku,thresh=5):
 def find_nearest(array,value):
     idx = (np.abs(array-value)).argmin()
     return idx
+def get_size(filename):
+    return os.stat(filename).st_size / (1024 * 1024)
