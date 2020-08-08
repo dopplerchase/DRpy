@@ -17,12 +17,15 @@ class GPMDPR():
     Currently, xarray cannot read NASA's HDF files directly (2A.GPM.DPR*). So here is an attempt to do so. 
     Once in xarray format, the effcient search functions can be used. 
     
-    **NOTE: Currently, I do not have this function pass all variables through (there is quite the list of them.
+    **NOTE 1: Currently, I do not have this function pass all variables through (there is quite the list of them.
     Maybe in the future I will generalize it to do so. But right now its a bit tedious to code up all the units and such
+    
+    **NOTE 2: Outerswath code not ready yet. Do not turn the flag on 
     
     Feel free to reach out to me on twitter (@dopplerchase) or email randyjc2@illinois.edu
     
     For your reference, please check out the ATBD: https://pps.gsfc.nasa.gov/GPMprelimdocs.html 
+
     """
 
     def __init__(self,filename=[],boundingbox=None): 
@@ -33,6 +36,10 @@ class GPMDPR():
         self.corners = boundingbox
         self.retrieval_flag = 0
         self.interp_flag = 0
+        if filename.find('X') >= 0:
+            self.legacy = False
+        else:
+            self.legacy = True 
         
     def read(self):
         """
@@ -42,12 +49,19 @@ class GPMDPR():
         
         self.hdf = h5py.File(self.filename,'r')
         
-        ###set some global parameters
-        #whats the common shape of the DPR files
-        shape = self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:].shape
-        self.along_track = np.arange(0,shape[0])
-        self.cross_track = np.arange(0,shape[1])
-        self.range = np.arange(0,shape[2])
+        if self.legacy:
+            ###set some global parameters
+            #whats the common shape of the DPR files
+            shape = self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:].shape
+            self.along_track = np.arange(0,shape[0])
+            self.cross_track = np.arange(0,shape[1])
+            self.range = np.arange(0,shape[2])
+        else:
+            shape = self.hdf['FS']['PRE']['zFactorMeasured'][:,12:37,:].shape
+            self.along_track = np.arange(0,shape[0])
+            self.cross_track = np.arange(0,shape[1])
+            self.range = np.arange(0,shape[2])
+            
         
     def get_highest_clutter_bin(self):
         """
@@ -99,7 +113,7 @@ class GPMDPR():
 
         self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
         
-    def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10):
+    def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10,outer_swath=False):
         """
         This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
         
@@ -125,8 +139,13 @@ class GPMDPR():
         #cut points to make sure there are points in your box.This should save you time. 
         if self.corners is not None:
             #load data out of hdf
-            lons = self.hdf['NS']['Longitude'][:,12:37]
-            lats = self.hdf['NS']['Latitude'][:,12:37]
+            if outer_swath:
+                lons = self.hdf['NS']['Longitude'][:,:]
+                lats = self.hdf['NS']['Latitude'][:,:]
+            else:
+                lons = self.hdf['NS']['Longitude'][:,12:37]
+                lats = self.hdf['NS']['Latitude'][:,12:37]
+                
             #shove it into a dataarray
             da = xr.DataArray(np.zeros(lons.shape), dims=['along_track', 'cross_track'],
                            coords={'lons': (['along_track','cross_track'],lons),
@@ -154,8 +173,12 @@ class GPMDPR():
                 
             if self.corners is None:
                 #load data out of hdf
-                lons = self.hdf['NS']['Longitude'][:,12:37]
-                lats = self.hdf['NS']['Latitude'][:,12:37]
+                if outer_swath:
+                    lons = self.hdf['NS']['Longitude'][:,:]
+                    lats = self.hdf['NS']['Latitude'][:,:]
+                else:
+                    lons = self.hdf['NS']['Longitude'][:,12:37]
+                    lats = self.hdf['NS']['Latitude'][:,12:37]
             
             da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
@@ -467,7 +490,7 @@ class GPMDPR():
 
         self.datestr = np.asarray(datestr,dtype=np.datetime64)
     
-    def run_retrieval(self,path_to_models=None,old=False):
+    def run_retrieval(self,path_to_models=None,old=False,notebook=False):
         
         """
         This method is a way to run our neural network trained retreival to get Dm in snowfall. 
@@ -482,9 +505,12 @@ class GPMDPR():
         from tensorflow.python.keras import losses
         
         #set number of threads = 1, this was crashing my parallel code, If in notebook comment this 
-        tf.config.threading.set_inter_op_parallelism_threads(1)
-#         tf.config.threading.set_intra_op_parallelism_threads(1)
-#         print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
+        if notebook:
+            pass
+        else:
+            tf.config.threading.set_inter_op_parallelism_threads(1)
+    #         tf.config.threading.set_intra_op_parallelism_threads(1)
+    #         print('Number of threads set to {}'.format(tf.config.threading.get_inter_op_parallelism_threads()))
 
 
         
