@@ -28,7 +28,12 @@ class GPMDPR():
 
     """
 
-    def __init__(self,filename=[],boundingbox=None): 
+    def __init__(self,filename=[],boundingbox=None,outer_swath=False): 
+        """ Initializes things.
+        filename: str, path to GPM-DPR file 
+        boundingbox: list of floats, if you would like to cut the gpm to a lat lon box 
+        send in a list of [lon_min,lon_mat,lat_min,lat_max]
+        """
         self.filename = filename
         self.xrds = None
         self.datestr=None
@@ -36,6 +41,7 @@ class GPMDPR():
         self.corners = boundingbox
         self.retrieval_flag = 0
         self.interp_flag = 0
+        self.outer_swath = outer_swath
         if filename.find('X') >= 0:
             self.legacy = False
         else:
@@ -52,68 +58,28 @@ class GPMDPR():
         if self.legacy:
             ###set some global parameters
             #whats the common shape of the DPR files
-            shape = self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:].shape
-            self.along_track = np.arange(0,shape[0])
-            self.cross_track = np.arange(0,shape[1])
-            self.range = np.arange(0,shape[2])
+            if self.outer_swath:
+                shape = self.hdf['NS']['PRE']['zFactorMeasured'][:,:,:].shape
+                self.along_track = np.arange(0,shape[0])
+                self.cross_track = np.arange(0,shape[1])
+                self.range = np.arange(0,shape[2])
+            else:
+                shape = self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:].shape
+                self.along_track = np.arange(0,shape[0])
+                self.cross_track = np.arange(0,shape[1])
+                self.range = np.arange(0,shape[2])
         else:
-            shape = self.hdf['FS']['PRE']['zFactorMeasured'][:,12:37,:].shape
+            shape = self.hdf['FS']['PRE']['zFactorMeasured'][:,:,:].shape
             self.along_track = np.arange(0,shape[0])
             self.cross_track = np.arange(0,shape[1])
             self.range = np.arange(0,shape[2])
-            
-        
-    def get_highest_clutter_bin(self):
-        """
-        This method makes us ground clutter conservative by supplying a clutter mask to apply to the fields.
-        It is based off the algorithim output of 'binClutterFreeBottom', which can be a bit conservative (~ 1km)
-
-        """
-
-        ku = self.hdf['NS']['PRE']['binClutterFreeBottom'][:,12:37]
-        ku = np.reshape(ku,[1,ku.shape[0],ku.shape[1]])
-        ka = self.hdf['MS']['PRE']['binClutterFreeBottom'][:]
-        ka = np.reshape(ka,[1,ka.shape[0],ka.shape[1]])
-        both = np.vstack([ku,ka])
-        pick_max = np.argmin(both,axis=0)
-        ku = self.hdf['NS']['PRE']['binClutterFreeBottom'][:,12:37]
-        ka = self.hdf['MS']['PRE']['binClutterFreeBottom'][:]
-        inds_to_pick = np.zeros(ku.shape,dtype=int)
-        ind = np.where(pick_max == 0)
-        inds_to_pick[ind] = ku[ind]
-        ind = np.where(pick_max == 1)
-        inds_to_pick[ind] = ka[ind]
-
-        dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
-        for i in np.arange(0,dummy_matrix.shape[0]):
-            for j in np.arange(0,dummy_matrix.shape[1]):
-                dummy_matrix[i,j,inds_to_pick[i,j]:] = 1
-
-        self.dummy = np.ma.asarray(dummy_matrix,dtype=int)
-        
-    def echotop(self):
-        """
-        This method takes the already clutter filtered data for the corrected reflectivity and cuts the 
-        noisy uncorrected reflectivity to the same height. Again, the method is a bit conservative, but is 
-        a good place to start.
-        
-        """
-        keeper = self.range
-        keeper = np.reshape(keeper,[1,keeper.shape[0]])
-        keeper = np.tile(keeper,(25,1))
-        keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
-        keeper = np.tile(keeper,(self.xrds.MSKa_c.values.shape[0],1,1))
-        keeper[np.isnan(self.xrds.MSKa_c)] = 9999
-
-        inds_to_pick = np.argmin(keeper,axis=2)
-        dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
-        for i in np.arange(0,dummy_matrix.shape[0]):
-            for j in np.arange(0,dummy_matrix.shape[1]):
-                dummy_matrix[i,j,:inds_to_pick[i,j]] = 1
-
-        self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
-        
+                
     def calc_heights(self):
+        """ Here we calculate the atitude above mean sea level. Surprisingly this was not 
+        provided in version 6, but is included in the new version. Please not there is a 
+        difference between this method and the supplied heights in the new version. It 
+        seems to be less than 200 m error. Just keep that in mind!""" 
+        
         x2 = 2. * 17 #total degrees is 48 (from -17 to +17)
         re = 6378. #radius of the earth km 
         theta = -1 *(x2/2.) + (x2/48.)*np.arange(0,49) #break the -17 to 17 into equal degrees 
@@ -134,7 +100,7 @@ class GPMDPR():
         da = xr.DataArray(prh[12:37,:], dims=['cross_track','range'])
         da.to_netcdf('./HEIGHTS.nc')
         
-    def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10,outer_swath=False):
+    def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10):
         """
         This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
         
@@ -149,7 +115,9 @@ class GPMDPR():
         self.precip = False
         
 
-        if (self.ptype=='precip') or (self.ptype=='Precip') or (self.ptype=='PRECIP') or (self.ptype=='snow') or (self.ptype=='Snow') or (self.ptype=='SNOW'):
+        if (self.ptype=='precip') or (self.ptype=='Precip') or \
+        (self.ptype=='PRECIP') or (self.ptype=='snow') or \
+        (self.ptype=='Snow') or (self.ptype=='SNOW'):
             self.precip=True
             if (self.ptype=='snow') or (self.ptype=='Snow') or (self.ptype=='SNOW'):
                 self.snow=True
@@ -161,7 +129,7 @@ class GPMDPR():
         #cut points to make sure there are points in your box.This should save you time. 
         if self.corners is not None:
             #load data out of hdf
-            if outer_swath:
+            if self.outer_swath:
                 if self.legacy:
                     lons = self.hdf['NS']['Longitude'][:,:]
                     lats = self.hdf['NS']['Latitude'][:,:]
@@ -177,7 +145,10 @@ class GPMDPR():
                            coords={'lons': (['along_track','cross_track'],lons),
                                    'lats': (['along_track','cross_track'],lats)})
             #cut the the edges of the box
-            da = da.where((da.lons >= self.corners[0]) & (da.lons <= self.corners[1]) & (da.lats >= self.corners[2])  & (da.lats <= self.corners[3]),drop=False)
+            da = da.where((da.lons >= self.corners[0]) & \
+                          (da.lons <= self.corners[1]) & \
+                          (da.lats >= self.corners[2]) & \
+                          (da.lats <= self.corners[3]),drop=False)
             #okay, now drop nans
             da = da.dropna(dim='along_track',how='all')
             #if there are no profiles, the len is 0, and we will set the kill flag
@@ -192,7 +163,7 @@ class GPMDPR():
                 self.parse_dtime()
 
             if self.height is None:
-                if outer_swath:
+                if self.outer_swath:
                     height = xr.open_dataarray('./HEIGHTS_full.nc')
                     height = height.values[np.newaxis,:,:]
                     if self.legacy:
@@ -207,7 +178,7 @@ class GPMDPR():
                     self.height = height
                 
             if self.corners is None:
-                if outer_swath:
+                if self.outer_swath:
                     if self.legacy:
                         lons = self.hdf['NS']['Longitude'][:,:]
                         lats = self.hdf['NS']['Latitude'][:,:]
@@ -217,259 +188,641 @@ class GPMDPR():
                 else:
                     lons = self.hdf['NS']['Longitude'][:,12:37]
                     lats = self.hdf['NS']['Latitude'][:,12:37]
-            
-            da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], dims=['along_track', 'cross_track'],
+            if self.legacy:
+                if self.outer_swath:
+                    #need to fill the outerswath with nans 
+                    flagSurfaceSnowfall = np.ones([len(self.along_track),len(self.cross_track)],dtype=int)*255
+                    flagSurfaceSnowfall[:,12:37] = self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:]
+                    da = xr.DataArray(flagSurfaceSnowfall, 
+                                      dims=['along_track', 'cross_track'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=255)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'experimental flag to diagnose snow at surface'
+
+                    #make xr dataset
+                    self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
+                    #
+
+                    #ADD BBtop and Bottom 
+                    da = xr.DataArray(self.hdf['NS']['CSF']['binBBTop'][:,:], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'ind of BBtop'
+                    self.xrds['binBBTop'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['CSF']['binBBBottom'][:,:], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'ind of BBtop'
+                    self.xrds['binBBBottom'] = da
+
+                    flagPrecip = np.ones([len(self.along_track),len(self.cross_track)],dtype=int)*-9999
+                    flagPrecip[:,12:37] = self.hdf['MS']['PRE']['flagPrecip'][:,:]
+                    da = xr.DataArray(flagPrecip, 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'flag to diagnose precip at surface' + \
+                    '11 is precip from both, 10 is preicp from just Ku-band'
+
+                    #fill dataset
+                    self.xrds['flagPrecip'] = da
+                    #
+                    typePrecip = np.ones([len(self.along_track),len(self.cross_track)],dtype=int)*-9999
+                    typePrecip[:,12:37] = self.hdf['MS']['CSF']['typePrecip'][:]
+                    typePrecip = np.asarray(typePrecip,dtype=float)
+                    ind = np.where(typePrecip == -1111)
+                    typePrecip[ind] = np.nan
+                    ind = np.where(typePrecip == -9999)
+                    typePrecip[ind] = np.nan
+
+                    typePrecip = np.trunc(typePrecip/10000000)
+                    typePrecip = np.asarray(typePrecip,dtype=int)
+
+                    da = xr.DataArray(typePrecip, dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
                                                'lats': (['along_track','cross_track'],lats),
                                                'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=255)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'experimental flag to diagnose snow at surface'
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'flag to diagnose raintype. If 1: Strat. If 2: Conv. If 3:other '
 
-            #make xr dataset
-            self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
-            #
-            
-            #ADD BBtop and Bottom 
-            da = xr.DataArray(self.hdf['NS']['CSF']['binBBTop'][:,12:37], dims=['along_track', 'cross_track'],
+                    self.xrds['typePrecip'] = da
+
+                    #Get the phaseNearSurface (0 is snow, 1 is mixed 2, 2.55 is missing )
+                    phaseNearSurface = self.hdf['NS']['SLV']['phaseNearSurface'][:,:]/100
+                    phaseNearSurface[phaseNearSurface == 2.55] = -9999
+                    phaseNearSurface =np.asarray(np.trunc(phaseNearSurface),dtype=int)
+
+                    da = xr.DataArray(phaseNearSurface, dims=['along_track', 'cross_track'],
                                        coords={'lons': (['along_track','cross_track'],lons),
                                                'lats': (['along_track','cross_track'],lats),
                                                'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=-9999)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'ind of BBtop'
-            self.xrds['binBBTop'] = da
-            
-            da = xr.DataArray(self.hdf['NS']['CSF']['binBBBottom'][:,12:37], dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=-9999)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'ind of BBtop'
-            self.xrds['binBBBottom'] = da
-            
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'flag to diagnose near surface phase.'+ \
+                    '0 is snow, 1 is mixed, 2 is rain. This is included to compare to Skofronick-Jackson 2019'
+                    self.xrds['phaseNearSurface'] = da
 
-            da = xr.DataArray(self.hdf['MS']['PRE']['flagPrecip'][:,:], dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=-9999)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'flag to diagnose precip at surface. 11 is precip from both, 10 is preicp from just Ku-band'
+                    #Get the precipRateNearSurf (needed for skofronick-jackson 2019 comparison)
+                    precipRateNearSurface = self.hdf['NS']['SLV']['precipRateNearSurface'][:,:]
+                    da = xr.DataArray(precipRateNearSurface, 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'Near surface R from the GPM-DPR algo.'
+                    self.xrds['precipRateNearSurface'] = da
 
-            #make xr dataset
-            self.xrds['flagPrecip'] = da
-            #
-            
-            typePrecip = self.hdf['MS']['CSF']['typePrecip'][:]
-            typePrecip = np.asarray(typePrecip,dtype=float)
-            ind = np.where(typePrecip == -1111)
-            typePrecip[ind] = np.nan
-            ind = np.where(typePrecip == -9999)
-            typePrecip[ind] = np.nan
+                    if clutter:
+                       self.get_highest_clutter_bin()
+                       da = xr.DataArray(self.dummy, 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                       da.attrs['units'] = 'none'
+                       da.attrs['standard_name'] = 'flag to remove ground clutter'
+                       self.xrds['clutter'] = da
 
-            typePrecip = np.trunc(typePrecip/10000000)
-            typePrecip = np.asarray(typePrecip,dtype=int)
-
-            da = xr.DataArray(typePrecip, dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=-9999)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'flag to diagnose raintype. If 1: Strat. If 2: Conv. If 3:other '
-            
-            self.xrds['typePrecip'] = da
-            
-            
-            #Get the phaseNearSurface (0 is snow, 1 is mixed 2, 2.55 is missing )
-            phaseNearSurface = self.hdf['NS']['SLV']['phaseNearSurface'][:,12:37]/100
-            phaseNearSurface[phaseNearSurface == 2.55] = -9999
-            phaseNearSurface =np.asarray(np.trunc(phaseNearSurface),dtype=int)
-            
-            da = xr.DataArray(phaseNearSurface, dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=-9999)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'flag to diagnose near surface phase. 0 is snow, 1 is mixed, 2 is rain. This is included to compare to Skofronick-Jackson 2019'
-            self.xrds['phaseNearSurface'] = da
-            
-            #Get the precipRateNearSurf (needed for skofronick-jackson 2019 comparison)
-            precipRateNearSurface = self.hdf['NS']['SLV']['precipRateNearSurface'][:,12:37]
-            da = xr.DataArray(precipRateNearSurface, dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-            da.fillna(value=-9999)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'Near surface R from the GPM-DPR algo.'
-            self.xrds['precipRateNearSurface'] = da
-
-            if clutter:
-                self.get_highest_clutter_bin()
-                da = xr.DataArray(self.dummy, dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-                da.attrs['units'] = 'none'
-                da.attrs['standard_name'] = 'flag to remove ground clutter'
-                self.xrds['clutter'] = da
-
-            da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrectedNearSurface'][:,12:37], dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr)})
-            da.attrs['units'] = 'dBZ'
-            da.attrs['standard_name'] = 'near surface Ku'
-            da = da.where(da >= 12)
-            self.xrds['nearsurfaceKu'] = da
-
-
-            da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrectedNearSurface'][:,:], dims=['along_track', 'cross_track'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats)})
-            da.attrs['units'] = 'dBZ'
-            da.attrs['standard_name'] = 'near surface Ka'
-            da = da.where(da >= 15)
-            self.xrds['nearsurfaceKa'] = da
-
-            da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrected'][:,12:37,:], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'dBZ'
-            da.attrs['standard_name'] = 'corrected KuPR'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            da = da.where(da >= 12)
-            self.xrds['NSKu_c'] = da
-            
-            da = xr.DataArray(self.hdf['NS']['SLV']['epsilon'][:,12:37,:],dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.fillna(value=-9999.9)
-            da = da.where(da >= 0)
-            da.attrs['units'] = 'none'
-            da.attrs['standard_name'] = 'epsilon value for retrieval'
-            self.xrds['epsilon'] = da
-
-            da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrected'][:,:,:], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'dBZ'
-            da.attrs['standard_name'] = 'corrected KaPR, MS scan'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            da = da.where(da >= 15)
-            self.xrds['MSKa_c'] = da
-
-            if echotop:
-                self.echotop()
-                da = xr.DataArray(self.dummy2, dims=['along_track', 'cross_track','range'],
-                                           coords={'lons': (['along_track','cross_track'],lons),
-                                                   'lats': (['along_track','cross_track'],lats),
-                                                   'time': (['along_track','cross_track'],self.datestr)})
-                da.attrs['units'] = 'none'
-                da.attrs['standard_name'] = 'flag to remove noise outside cloud/precip top'
-                self.xrds['echotop'] = da
-
-            da = xr.DataArray(self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'dBZ'
-            da.attrs['standard_name'] = 'measured KuPR'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            if echotop:
-                da = da.where(self.xrds.echotop==0)
-            da = da.where(da >= 0)
-            self.xrds['NSKu'] = da
-
-            da = xr.DataArray(self.hdf['MS']['PRE']['zFactorMeasured'][:,:,:], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'dBZ'
-            da.attrs['standard_name'] = 'measured KaPR, MS scan'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            if echotop:
-                da = da.where(self.xrds.echotop==0)
-            da = da.where(da >= 0)
-            self.xrds['MSKa'] = da
-
-
-
-            da = xr.DataArray(self.hdf['NS']['SLV']['precipRate'][:,12:37,:], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'mm hr^-1'
-            da.attrs['standard_name'] = 'retrieved R, from DPR algo'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            if echotop:
-                da = da.where(self.xrds.echotop==0)
-            self.xrds['R'] = da
-
-            da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,1], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'mm'
-            da.attrs['standard_name'] = 'retrieved Dm, from DPR algo'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            if echotop:
-                da = da.where(self.xrds.echotop==0)
-            da = da.where(da >= 0)
-            self.xrds['Dm_dpr'] = da
-            
-            
-            da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,0], dims=['along_track', 'cross_track','range'],
-                                       coords={'lons': (['along_track','cross_track'],lons),
-                                               'lats': (['along_track','cross_track'],lats),
-                                               'time': (['along_track','cross_track'],self.datestr),
-                                               'alt':(['along_track', 'cross_track','range'],self.height)})
-            da.attrs['units'] = 'dBNw'
-            da.attrs['standard_name'] = 'retrieved Nw, from DPR algo'
-            if clutter:
-                da = da.where(self.xrds.clutter==0)
-            if echotop:
-                da = da.where(self.xrds.echotop==0)
-            da = da.where(da >= 0)
-            self.xrds['Nw_dpr'] = da
-
-            if self.precip:
-                #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
-                self.xrds = self.xrds.where(self.xrds.flagPrecip>=precipflag)
-#                 if self.snow:
-#                     self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
+                    da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrectedNearSurface'][:,:], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'near surface Ku'
+                    da = da.where(da >= 12)
+                    self.xrds['nearsurfaceKu'] = da
                     
-            if self.corners is not None:
-                self.setboxcoords()
-            
-            #to reduce size of data, drop empty cross-track sections 
-#             self.xrds = self.xrds.dropna(dim='along_track',how='all')
-            
-            #as before, makes sure there is data...
-            if self.xrds.along_track.shape[0]==0:
-                self.killflag = True
-            
-            
+                    kanearsurf = np.ones([len(self.along_track),len(self.cross_track)],dtype=int)*-9999
+                    kanearsurf[:,12:37] = self.hdf['MS']['SLV']['zFactorCorrectedNearSurface'][:,:]
+                    da = xr.DataArray(kanearsurf, 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'near surface Ka'
+                    da = da.where(da >= 15)
+                    self.xrds['nearsurfaceKa'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrected'][:,:,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'corrected KuPR'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    da = da.where(da >= 12)
+                    self.xrds['NSKu_c'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['epsilon'][:,:,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.fillna(value=-9999.9)
+                    da = da.where(da >= 0)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'epsilon value for retrieval'
+                    self.xrds['epsilon'] = da
+                    
+                    MSKa_c = np.ones([len(self.along_track),len(self.cross_track),len(self.range)],dtype=float)*-9999
+                    MSKa_c[:,12:37,:] = self.hdf['MS']['SLV']['zFactorCorrected'][:,:,:]
+                    da = xr.DataArray(MSKa_c, 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'corrected KaPR, MS scan'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    da = da.where(da >= 15)
+                    self.xrds['MSKa_c'] = da
+
+                    if echotop:
+                       self.echotop()
+                       da = xr.DataArray(self.dummy2, 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                       da.attrs['units'] = 'none'
+                       da.attrs['standard_name'] = 'flag to remove noise outside cloud/precip top'
+                       self.xrds['echotop'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['PRE']['zFactorMeasured'][:,:,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'measured KuPR'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['NSKu'] = da
+                    
+                    MSKa = np.ones([len(self.along_track),len(self.cross_track),len(self.range)],dtype=float)*-9999
+                    MSKa[:,12:37,:] = self.hdf['MS']['PRE']['zFactorMeasured'][:,:,:]
+                    da = xr.DataArray(MSKa, 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'measured KaPR, MS scan'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['MSKa'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['precipRate'][:,:,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'mm hr^-1'
+                    da.attrs['standard_name'] = 'retrieved R, from DPR algo'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    self.xrds['R'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,:,:,1], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'mm'
+                    da.attrs['standard_name'] = 'retrieved Dm, from DPR algo'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['Dm_dpr'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,:,:,0], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBNw'
+                    da.attrs['standard_name'] = 'retrieved Nw, from DPR algo'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['Nw_dpr'] = da
+
+                    if self.precip:
+                       #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
+                       self.xrds = self.xrds.where(self.xrds.flagPrecip>=precipflag)
+
+                    if self.corners is not None:
+                       self.setboxcoords()
+
+                    #as before, makes sure there is data...
+                    if self.xrds.along_track.shape[0]==0:
+                       self.killflag = True
+                else:
+                    da = xr.DataArray(self.hdf['MS']['Experimental']['flagSurfaceSnowfall'][:,:], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=255)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'experimental flag to diagnose snow at surface'
+
+                    #make xr dataset
+                    self.xrds = da.to_dataset(name = 'flagSurfaceSnow')
+                    #
+
+                    #ADD BBtop and Bottom 
+                    da = xr.DataArray(self.hdf['NS']['CSF']['binBBTop'][:,12:37], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'ind of BBtop'
+                    self.xrds['binBBTop'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['CSF']['binBBBottom'][:,12:37], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'ind of BBtop'
+                    self.xrds['binBBBottom'] = da
+
+                    da = xr.DataArray(self.hdf['MS']['PRE']['flagPrecip'][:,:], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'flag to diagnose precip at surface' + \
+                    '11 is precip from both, 10 is preicp from just Ku-band'
+
+                    #fill dataset
+                    self.xrds['flagPrecip'] = da
+                    #
+
+                    typePrecip = self.hdf['MS']['CSF']['typePrecip'][:]
+                    typePrecip = np.asarray(typePrecip,dtype=float)
+                    ind = np.where(typePrecip == -1111)
+                    typePrecip[ind] = np.nan
+                    ind = np.where(typePrecip == -9999)
+                    typePrecip[ind] = np.nan
+
+                    typePrecip = np.trunc(typePrecip/10000000)
+                    typePrecip = np.asarray(typePrecip,dtype=int)
+
+                    da = xr.DataArray(typePrecip, dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'flag to diagnose raintype. If 1: Strat. If 2: Conv. If 3:other '
+
+                    self.xrds['typePrecip'] = da
+
+                    #Get the phaseNearSurface (0 is snow, 1 is mixed 2, 2.55 is missing )
+                    phaseNearSurface = self.hdf['NS']['SLV']['phaseNearSurface'][:,12:37]/100
+                    phaseNearSurface[phaseNearSurface == 2.55] = -9999
+                    phaseNearSurface =np.asarray(np.trunc(phaseNearSurface),dtype=int)
+
+                    da = xr.DataArray(phaseNearSurface, dims=['along_track', 'cross_track'],
+                                       coords={'lons': (['along_track','cross_track'],lons),
+                                               'lats': (['along_track','cross_track'],lats),
+                                               'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'flag to diagnose near surface phase.'+ \
+                    '0 is snow, 1 is mixed, 2 is rain. This is included to compare to Skofronick-Jackson 2019'
+                    self.xrds['phaseNearSurface'] = da
+
+                    #Get the precipRateNearSurf (needed for skofronick-jackson 2019 comparison)
+                    precipRateNearSurface = self.hdf['NS']['SLV']['precipRateNearSurface'][:,12:37]
+                    da = xr.DataArray(precipRateNearSurface, 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.fillna(value=-9999)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'Near surface R from the GPM-DPR algo.'
+                    self.xrds['precipRateNearSurface'] = da
+
+                    if clutter:
+                       self.get_highest_clutter_bin()
+                       da = xr.DataArray(self.dummy, 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                       da.attrs['units'] = 'none'
+                       da.attrs['standard_name'] = 'flag to remove ground clutter'
+                       self.xrds['clutter'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrectedNearSurface'][:,12:37], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'near surface Ku'
+                    da = da.where(da >= 12)
+                    self.xrds['nearsurfaceKu'] = da
+
+                    da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrectedNearSurface'][:,:], 
+                                   dims=['along_track', 'cross_track'],
+                                   coords={'lons': (['along_track','cross_track'],lons),
+                                           'lats': (['along_track','cross_track'],lats),
+                                           'time': (['along_track','cross_track'],self.datestr)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'near surface Ka'
+                    da = da.where(da >= 15)
+                    self.xrds['nearsurfaceKa'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['zFactorCorrected'][:,12:37,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'corrected KuPR'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    da = da.where(da >= 12)
+                    self.xrds['NSKu_c'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['epsilon'][:,12:37,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.fillna(value=-9999.9)
+                    da = da.where(da >= 0)
+                    da.attrs['units'] = 'none'
+                    da.attrs['standard_name'] = 'epsilon value for retrieval'
+                    self.xrds['epsilon'] = da
+
+                    da = xr.DataArray(self.hdf['MS']['SLV']['zFactorCorrected'][:,:,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'corrected KaPR, MS scan'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    da = da.where(da >= 15)
+                    self.xrds['MSKa_c'] = da
+
+                    if echotop:
+                       self.echotop()
+                       da = xr.DataArray(self.dummy2, 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                       da.attrs['units'] = 'none'
+                       da.attrs['standard_name'] = 'flag to remove noise outside cloud/precip top'
+                       self.xrds['echotop'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['PRE']['zFactorMeasured'][:,12:37,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'measured KuPR'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['NSKu'] = da
+
+                    da = xr.DataArray(self.hdf['MS']['PRE']['zFactorMeasured'][:,:,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBZ'
+                    da.attrs['standard_name'] = 'measured KaPR, MS scan'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['MSKa'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['precipRate'][:,12:37,:], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'mm hr^-1'
+                    da.attrs['standard_name'] = 'retrieved R, from DPR algo'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    self.xrds['R'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,1], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'mm'
+                    da.attrs['standard_name'] = 'retrieved Dm, from DPR algo'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['Dm_dpr'] = da
+
+                    da = xr.DataArray(self.hdf['NS']['SLV']['paramDSD'][:,12:37,:,0], 
+                                      dims=['along_track', 'cross_track','range'],
+                                      coords={'lons': (['along_track','cross_track'],lons),
+                                              'lats': (['along_track','cross_track'],lats),
+                                              'time': (['along_track','cross_track'],self.datestr),
+                                              'alt':(['along_track', 'cross_track','range'],self.height)})
+                    da.attrs['units'] = 'dBNw'
+                    da.attrs['standard_name'] = 'retrieved Nw, from DPR algo'
+                    if clutter:
+                       da = da.where(self.xrds.clutter==0)
+                    if echotop:
+                       da = da.where(self.xrds.echotop==0)
+                    da = da.where(da >= 0)
+                    self.xrds['Nw_dpr'] = da
+
+                    if self.precip:
+                       #change this to 10 if you want to relax the conditions, because the ka band has bad sensativity
+                       self.xrds = self.xrds.where(self.xrds.flagPrecip>=precipflag)
+                    #                 if self.snow:
+                    #                     self.xrds = self.xrds.where(self.xrds.flagSurfaceSnow==1)
+
+                    if self.corners is not None:
+                       self.setboxcoords()
+                    #to reduce size of data, drop empty cross-track sections 
+                    #             self.xrds = self.xrds.dropna(dim='along_track',how='all')
+
+                    #as before, makes sure there is data...
+                    if self.xrds.along_track.shape[0]==0:
+                       self.killflag = True
+            else:
+                #the bit of code for the new generation files will go here. 
+                pass
+
+
+    def get_highest_clutter_bin(self):
+        """
+        This method makes us ground clutter conservative by supplying a clutter mask to apply to the fields.
+        It is based off the algorithim output of 'binClutterFreeBottom', which can be a bit conservative (~ 1km)
+
+        """
+        if self.legacy:
+            if self.outer_swath:
+                ku = self.hdf['NS']['PRE']['binClutterFreeBottom'][:,:]
+                ku = np.reshape(ku,[1,ku.shape[0],ku.shape[1]])
+                ka = np.ones([len(self.along_track),len(self.cross_track)],dtype=int)*-9999
+                ka[:,12:37] = self.hdf['MS']['PRE']['binClutterFreeBottom'][:]
+                ka = np.reshape(ka,[1,ka.shape[0],ka.shape[1]])
+                both = np.vstack([ku,ka])
+                pick_max = np.argmin(both,axis=0)
+                ku = self.hdf['NS']['PRE']['binClutterFreeBottom'][:,:]
+                ka = np.ones([len(self.along_track),len(self.cross_track)],dtype=int)*-9999
+                ka[:,12:37] = self.hdf['MS']['PRE']['binClutterFreeBottom'][:]
+                inds_to_pick = np.zeros(ku.shape,dtype=int)
+                ind = np.where(pick_max == 0)
+                inds_to_pick[ind] = ku[ind]
+                ind = np.where(pick_max == 1)
+                inds_to_pick[ind] = ka[ind]
+
+                dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+                for i in np.arange(0,dummy_matrix.shape[0]):
+                    for j in np.arange(0,dummy_matrix.shape[1]):
+                        dummy_matrix[i,j,inds_to_pick[i,j]:] = 1
+
+                self.dummy = np.ma.asarray(dummy_matrix,dtype=int)
+            else:
+                ku = self.hdf['NS']['PRE']['binClutterFreeBottom'][:,12:37]
+                ku = np.reshape(ku,[1,ku.shape[0],ku.shape[1]])
+                ka = self.hdf['MS']['PRE']['binClutterFreeBottom'][:]
+                ka = np.reshape(ka,[1,ka.shape[0],ka.shape[1]])
+                both = np.vstack([ku,ka])
+                pick_max = np.argmin(both,axis=0)
+                ku = self.hdf['NS']['PRE']['binClutterFreeBottom'][:,12:37]
+                ka = self.hdf['MS']['PRE']['binClutterFreeBottom'][:]
+                inds_to_pick = np.zeros(ku.shape,dtype=int)
+                ind = np.where(pick_max == 0)
+                inds_to_pick[ind] = ku[ind]
+                ind = np.where(pick_max == 1)
+                inds_to_pick[ind] = ka[ind]
+
+                dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+                for i in np.arange(0,dummy_matrix.shape[0]):
+                    for j in np.arange(0,dummy_matrix.shape[1]):
+                        dummy_matrix[i,j,inds_to_pick[i,j]:] = 1
+
+                self.dummy = np.ma.asarray(dummy_matrix,dtype=int)
+    def echotop(self):
+        """
+        This method takes the already clutter filtered data for the corrected reflectivity and cuts the 
+        noisy uncorrected reflectivity to the same height. Again, the method is a bit conservative, but is 
+        a good place to start.
+        
+        """
+        if self.legacy:
+            if self.outer_swath:
+                #HEADS UP, will default to using Ku in the outerswath because there is no Ka
+                keeper = self.range
+                keeper = np.reshape(keeper,[1,keeper.shape[0]])
+                keeper = np.tile(keeper,(49,1))
+                keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+                keeper = np.tile(keeper,(self.xrds.NSKu_c.values.shape[0],1,1))
+                keeper[np.isnan(self.xrds.NSKu_c)] = 9999
+
+                inds_to_pick = np.argmin(keeper,axis=2)
+                dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+                for i in np.arange(0,dummy_matrix.shape[0]):
+                    for j in np.arange(0,dummy_matrix.shape[1]):
+                        dummy_matrix[i,j,:inds_to_pick[i,j]] = 1
+
+                self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
+            else:
+                keeper = self.range
+                keeper = np.reshape(keeper,[1,keeper.shape[0]])
+                keeper = np.tile(keeper,(25,1))
+                keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+                keeper = np.tile(keeper,(self.xrds.MSKa_c.values.shape[0],1,1))
+                keeper[np.isnan(self.xrds.MSKa_c)] = 9999
+
+                inds_to_pick = np.argmin(keeper,axis=2)
+                dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+                for i in np.arange(0,dummy_matrix.shape[0]):
+                    for j in np.arange(0,dummy_matrix.shape[1]):
+                        dummy_matrix[i,j,:inds_to_pick[i,j]] = 1
+
+                self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)  
          
     def setboxcoords(self):
         """
@@ -490,43 +843,85 @@ class GPMDPR():
         This method creates datetime objects from the hdf file in a timely mannor.
         Typically run this after you already filtered for precip/snow to save additional time. 
         """
-        year = self.hdf['MS']['ScanTime']['Year'][:]
-        ind = np.where(year == -9999)[0]
-        year = np.asarray(year,dtype=str)
-        year = list(year)
+        if self.legacy:
+            if self.outer_swath:
+                year = self.hdf['NS']['ScanTime']['Year'][:]
+                ind = np.where(year == -9999)[0]
+                year = np.asarray(year,dtype=str)
+                year = list(year)
 
-        month = self.hdf['MS']['ScanTime']['Month'][:]
-        month = np.asarray(month,dtype=str)
-        month = np.char.rjust(month, 2, fillchar='0')
-        month = list(month)
+                month = self.hdf['NS']['ScanTime']['Month'][:]
+                month = np.asarray(month,dtype=str)
+                month = np.char.rjust(month, 2, fillchar='0')
+                month = list(month)
 
-        day = self.hdf['MS']['ScanTime']['DayOfMonth'][:]
-        day = np.asarray(day,dtype=str)
-        day = np.char.rjust(day, 2, fillchar='0')
-        day = list(day)
+                day = self.hdf['NS']['ScanTime']['DayOfMonth'][:]
+                day = np.asarray(day,dtype=str)
+                day = np.char.rjust(day, 2, fillchar='0')
+                day = list(day)
 
-        hour = self.hdf['MS']['ScanTime']['Hour'][:]
-        hour = np.asarray(hour,dtype=str)
-        hour = np.char.rjust(hour, 2, fillchar='0')
-        hour = list(hour)
+                hour = self.hdf['NS']['ScanTime']['Hour'][:]
+                hour = np.asarray(hour,dtype=str)
+                hour = np.char.rjust(hour, 2, fillchar='0')
+                hour = list(hour)
 
-        minute = self.hdf['MS']['ScanTime']['Minute'][:]
-        minute = np.asarray(minute,dtype=str)
-        minute = np.char.rjust(minute, 2, fillchar='0')
-        minute = list(minute)
+                minute = self.hdf['NS']['ScanTime']['Minute'][:]
+                minute = np.asarray(minute,dtype=str)
+                minute = np.char.rjust(minute, 2, fillchar='0')
+                minute = list(minute)
 
-        second = self.hdf['MS']['ScanTime']['Second'][:]
-        second = np.asarray(second,dtype=str)
-        second = np.char.rjust(second, 2, fillchar='0')
-        second = list(second)
-        
-        datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
-        datestr = np.asarray(datestr,dtype=str)
-        datestr[ind] = '1970-01-01 00:00:00'
-        datestr = np.reshape(datestr,[len(datestr),1])
-        datestr = np.tile(datestr,(1,25))
+                second = self.hdf['NS']['ScanTime']['Second'][:]
+                second = np.asarray(second,dtype=str)
+                second = np.char.rjust(second, 2, fillchar='0')
+                second = list(second)
 
-        self.datestr = np.asarray(datestr,dtype=np.datetime64)
+                datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + \
+                            ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
+                datestr = np.asarray(datestr,dtype=str)
+                datestr[ind] = '1970-01-01 00:00:00'
+                datestr = np.reshape(datestr,[len(datestr),1])
+                datestr = np.tile(datestr,(1,49))
+
+                self.datestr = np.asarray(datestr,dtype=np.datetime64)
+            else:
+                year = self.hdf['MS']['ScanTime']['Year'][:]
+                ind = np.where(year == -9999)[0]
+                year = np.asarray(year,dtype=str)
+                year = list(year)
+
+                month = self.hdf['MS']['ScanTime']['Month'][:]
+                month = np.asarray(month,dtype=str)
+                month = np.char.rjust(month, 2, fillchar='0')
+                month = list(month)
+
+                day = self.hdf['MS']['ScanTime']['DayOfMonth'][:]
+                day = np.asarray(day,dtype=str)
+                day = np.char.rjust(day, 2, fillchar='0')
+                day = list(day)
+
+                hour = self.hdf['MS']['ScanTime']['Hour'][:]
+                hour = np.asarray(hour,dtype=str)
+                hour = np.char.rjust(hour, 2, fillchar='0')
+                hour = list(hour)
+
+                minute = self.hdf['MS']['ScanTime']['Minute'][:]
+                minute = np.asarray(minute,dtype=str)
+                minute = np.char.rjust(minute, 2, fillchar='0')
+                minute = list(minute)
+
+                second = self.hdf['MS']['ScanTime']['Second'][:]
+                second = np.asarray(second,dtype=str)
+                second = np.char.rjust(second, 2, fillchar='0')
+                second = list(second)
+
+                datestr  = [year[i] +"-"+ month[i]+ "-" + day[i] + \
+                            ' ' + hour[i] + ':' + minute[i] + ':' + second[i]  for i in range(len(year))]
+                datestr = np.asarray(datestr,dtype=str)
+                datestr[ind] = '1970-01-01 00:00:00'
+                datestr = np.reshape(datestr,[len(datestr),1])
+                datestr = np.tile(datestr,(1,25))
+
+                self.datestr = np.asarray(datestr,dtype=np.datetime64)
     
     def run_retrieval(self,path_to_models=None,old=False,notebook=False):
         
@@ -830,7 +1225,7 @@ class GPMDPR():
         y = self.sounding[keyname].values
         z = self.xrds.alt.values*1000 #convert to m 
         interped = np.zeros(self.xrds.alt.values.shape)
-        for i in np.arange(0,25):
+        for i in np.arange(0,len(self.cross_track)):
             interped[:,i,:] = interp_2(x[:,i,:],y[:,i,:],z[0,i,:])
 
         da = xr.DataArray(interped, dims=['along_track', 'cross_track','range'],
@@ -850,40 +1245,77 @@ class GPMDPR():
         Since we are often concerned with whats happening at the surface, this will extract the variables just above
         the clutter. 
         """
-        keeper = self.xrds.range.values
-        keeper = np.reshape(keeper,[1,keeper.shape[0]])
-        keeper = np.tile(keeper,(25,1))
-        keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
-        keeper = np.tile(keeper,(self.xrds.NSKu.values.shape[0],1,1))
-        keeper[np.isnan(self.xrds.NSKu.values)] = -9999
+        if self.legacy:
+            if self.outer_swath:
+                keeper = self.xrds.range.values
+                keeper = np.reshape(keeper,[1,keeper.shape[0]])
+                keeper = np.tile(keeper,(49,1))
+                keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+                keeper = np.tile(keeper,(self.xrds.NSKu.values.shape[0],1,1))
+                keeper[np.isnan(self.xrds.NSKu.values)] = -9999
 
-        inds_to_pick = np.argmax(keeper,axis=2)
-        dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+                inds_to_pick = np.argmax(keeper,axis=2)
+                dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
 
-        #note, for all nan columns, it will say its 0, or the top of the GPM index, which should alway be nan anyway
-        for i in np.arange(0,dummy_matrix.shape[0]):
-            for j in np.arange(0,dummy_matrix.shape[1]):
-                dummy_matrix[i,j,inds_to_pick[i,j]] = 1
+                #note, for all nan columns, it will say its 0, or the top of the GPM index, which should alway be nan anyway
+                for i in np.arange(0,dummy_matrix.shape[0]):
+                    for j in np.arange(0,dummy_matrix.shape[1]):
+                        dummy_matrix[i,j,inds_to_pick[i,j]] = 1
 
-        self.lowest_gate_index = np.ma.asarray(dummy_matrix,dtype=int)
+                self.lowest_gate_index = np.ma.asarray(dummy_matrix,dtype=int)
 
-        self.grab_variable(keyname='NSKu',nearsurf=True)
-        self.grab_variable(keyname='NSKu_c',nearsurf=True)
-        self.grab_variable(keyname='MSKa',nearsurf=True)
-        self.grab_variable(keyname='MSKa_c',nearsurf=True)
-        self.grab_variable(keyname='R',nearsurf=True)
-        self.grab_variable(keyname='Dm_dpr',nearsurf=True)
-        self.grab_variable(keyname='alt',nearsurf=True)
-        
-        if self.retrieval_flag == 1:
-            self.grab_variable(keyname='Dm',nearsurf=True)
-            self.grab_variable(keyname='IWC',nearsurf=True)
-            
-        if self.interp_flag == 1:
-            self.grab_variable(keyname='T',nearsurf=True)
-            self.grab_variable(keyname='U',nearsurf=True)
-            self.grab_variable(keyname='V',nearsurf=True)
-            self.grab_variable(keyname='QV',nearsurf=True)
+                self.grab_variable(keyname='NSKu',nearsurf=True)
+                self.grab_variable(keyname='NSKu_c',nearsurf=True)
+                self.grab_variable(keyname='MSKa',nearsurf=True)
+                self.grab_variable(keyname='MSKa_c',nearsurf=True)
+                self.grab_variable(keyname='R',nearsurf=True)
+                self.grab_variable(keyname='Dm_dpr',nearsurf=True)
+                self.grab_variable(keyname='alt',nearsurf=True)
+
+                if self.retrieval_flag == 1:
+                    self.grab_variable(keyname='Dm',nearsurf=True)
+                    self.grab_variable(keyname='IWC',nearsurf=True)
+
+                if self.interp_flag == 1:
+                    self.grab_variable(keyname='T',nearsurf=True)
+                    self.grab_variable(keyname='U',nearsurf=True)
+                    self.grab_variable(keyname='V',nearsurf=True)
+                    self.grab_variable(keyname='QV',nearsurf=True)
+            else:
+                keeper = self.xrds.range.values
+                keeper = np.reshape(keeper,[1,keeper.shape[0]])
+                keeper = np.tile(keeper,(25,1))
+                keeper = np.reshape(keeper,[1,keeper.shape[0],keeper.shape[1]])
+                keeper = np.tile(keeper,(self.xrds.NSKu.values.shape[0],1,1))
+                keeper[np.isnan(self.xrds.NSKu.values)] = -9999
+
+                inds_to_pick = np.argmax(keeper,axis=2)
+                dummy_matrix = np.ma.zeros([inds_to_pick.shape[0],inds_to_pick.shape[1],176])
+
+                #note, for all nan columns, it will say its 0, or the top of the GPM index, which should alway be nan anyway
+                for i in np.arange(0,dummy_matrix.shape[0]):
+                    for j in np.arange(0,dummy_matrix.shape[1]):
+                        dummy_matrix[i,j,inds_to_pick[i,j]] = 1
+
+                self.lowest_gate_index = np.ma.asarray(dummy_matrix,dtype=int)
+
+                self.grab_variable(keyname='NSKu',nearsurf=True)
+                self.grab_variable(keyname='NSKu_c',nearsurf=True)
+                self.grab_variable(keyname='MSKa',nearsurf=True)
+                self.grab_variable(keyname='MSKa_c',nearsurf=True)
+                self.grab_variable(keyname='R',nearsurf=True)
+                self.grab_variable(keyname='Dm_dpr',nearsurf=True)
+                self.grab_variable(keyname='alt',nearsurf=True)
+
+                if self.retrieval_flag == 1:
+                    self.grab_variable(keyname='Dm',nearsurf=True)
+                    self.grab_variable(keyname='IWC',nearsurf=True)
+
+                if self.interp_flag == 1:
+                    self.grab_variable(keyname='T',nearsurf=True)
+                    self.grab_variable(keyname='U',nearsurf=True)
+                    self.grab_variable(keyname='V',nearsurf=True)
+                    self.grab_variable(keyname='QV',nearsurf=True)
             
     def extract_echotop(self):
         """
