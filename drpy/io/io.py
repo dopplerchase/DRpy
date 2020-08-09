@@ -172,8 +172,9 @@ class netrunner():
                 self.filename = self.file_list[ind_b]
 
     def download(self,savedir='./'):
-        
-        if self.servername=='NearRealTime':
+        if len(self.filename) > 1:
+            print('Ope: Multiple file downloads not currently supported. Sorry.')
+        elif self.servername=='NearRealTime':
             url = self.server + self.filename[0]
             print('Downloading: {}'.format(url))
             cmd = 'curl -s -u ' + self.username+':'+self.username+' ' + url + ' -o ' + \

@@ -113,6 +113,27 @@ class GPMDPR():
 
         self.dummy2 = np.ma.asarray(dummy_matrix,dtype=int)
         
+    def calc_heights(self):
+        x2 = 2. * 17 #total degrees is 48 (from -17 to +17)
+        re = 6378. #radius of the earth km 
+        theta = -1 *(x2/2.) + (x2/48.)*np.arange(0,49) #break the -17 to 17 into equal degrees 
+
+        theta2 = np.zeros(theta.shape[0]+1)
+        theta = theta - 0.70833333/2. #shift thing to get left edge for pcolors
+        theta2[:-1] = theta 
+        theta2[-1] = theta[-1] + 0.70833333
+        theta = theta2 * (np.pi/180.) #convert to radians
+
+        prh = np.zeros([49,176]) #set up matrix 
+        for i in np.arange(0,176): #loop over num range gates
+            for j in np.arange(0,49): #loop over scans 
+                a = np.arcsin(((re+407)/re)*np.sin(theta[j]))-theta[j] #407 km is the orbit height, re radius of earth, 
+                prh[j,i] = (176-(i))*0.125*np.cos(theta[j]+a) #more geometry 
+        da = xr.DataArray(prh[:,:], dims=['cross_track','range'])
+        da.to_netcdf('./HEIGHTS_full.nc')
+        da = xr.DataArray(prh[12:37,:], dims=['cross_track','range'])
+        da.to_netcdf('./HEIGHTS.nc')
+        
     def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10,outer_swath=False):
         """
         This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
@@ -135,13 +156,18 @@ class GPMDPR():
         
         #set the killflag to false. If this is True at the end, it means no points in the box were found. 
         self.killflag = False
+        
         #first thing first, check to make sure there are points in the bounding box.
         #cut points to make sure there are points in your box.This should save you time. 
         if self.corners is not None:
             #load data out of hdf
             if outer_swath:
-                lons = self.hdf['NS']['Longitude'][:,:]
-                lats = self.hdf['NS']['Latitude'][:,:]
+                if self.legacy:
+                    lons = self.hdf['NS']['Longitude'][:,:]
+                    lats = self.hdf['NS']['Latitude'][:,:]
+                else:
+                    lons = self.hdf['FS']['Longitude'][:,:]
+                    lats = self.hdf['FS']['Latitude'][:,:]
             else:
                 lons = self.hdf['NS']['Longitude'][:,12:37]
                 lats = self.hdf['NS']['Latitude'][:,12:37]
@@ -165,17 +191,29 @@ class GPMDPR():
             if self.datestr is None:
                 self.parse_dtime()
 
-            if self.height is None: 
-                height = xr.open_dataarray('/data/gpm/a/randyjc2/DRpy/drpy/models/HEIGHTS.nc')
-                height = height.values[np.newaxis,:,:]
-                height = np.tile(height,(self.hdf['NS']['Longitude'].shape[0],1,1))
-                self.height = height
+            if self.height is None:
+                if outer_swath:
+                    height = xr.open_dataarray('./HEIGHTS_full.nc')
+                    height = height.values[np.newaxis,:,:]
+                    if self.legacy:
+                        height = np.tile(height,(self.hdf['NS']['Longitude'].shape[0],1,1))
+                    else:
+                        height = np.tile(height,(self.hdf['FS']['Longitude'].shape[0],1,1))
+                    self.height = height
+                else:
+                    height = xr.open_dataarray('./HEIGHTS.nc')
+                    height = height.values[np.newaxis,:,:]
+                    height = np.tile(height,(self.hdf['NS']['Longitude'].shape[0],1,1))
+                    self.height = height
                 
             if self.corners is None:
-                #load data out of hdf
                 if outer_swath:
-                    lons = self.hdf['NS']['Longitude'][:,:]
-                    lats = self.hdf['NS']['Latitude'][:,:]
+                    if self.legacy:
+                        lons = self.hdf['NS']['Longitude'][:,:]
+                        lats = self.hdf['NS']['Latitude'][:,:]
+                    else:
+                        lons = self.hdf['FS']['Longitude'][:,:]
+                        lats = self.hdf['FS']['Latitude'][:,:]
                 else:
                     lons = self.hdf['NS']['Longitude'][:,12:37]
                     lats = self.hdf['NS']['Latitude'][:,12:37]
