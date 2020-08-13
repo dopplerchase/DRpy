@@ -168,6 +168,7 @@ class GPMDPR():
                         height = xr.open_dataarray('./HEIGHTS_full.nc')
                         height = height.values[np.newaxis,:,:]
                         height = np.tile(height,(self.hdf['NS']['Longitude'].shape[0],1,1))
+                        self.height = height
                     else:
                         height = xr.open_dataarray('./HEIGHTS.nc')
                         height = height.values[np.newaxis,:,:]
