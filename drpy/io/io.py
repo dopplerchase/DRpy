@@ -4,7 +4,6 @@ import subprocess
 import os
 import numpy as np
 import datetime
-from ftplib import FTP
 
 def padder(x):
     
@@ -18,12 +17,12 @@ def padder(x):
 class netrunner():
     """ This class will house all the functions needed to query the GPM FTP"""
     
-    def __init__(self,servername='NearRealTime',username=None,start_time=None,end_time=None,Xradar=False):
+    def __init__(self,servername='NearRealTime',username=None,start_time=None,end_time=None,Xradar=False,autorun=True,savedir='./'):
         self.servername = servername
         if servername=='NearRealTime':
             self.server ='https://jsimpsonhttps.pps.eosdis.nasa.gov/text'
         elif servername=='Research':
-            self.server = 'pps.gsfc.nasa.gov'
+            self.server = 'https://arthurhouhttps.pps.eosdis.nasa.gov/text'
         self.s_time = start_time
         self.e_time = end_time
         if username is None:
@@ -32,6 +31,13 @@ class netrunner():
             self.username=username
         self.Xradar = Xradar
         
+        if autorun:
+            #this will grab all the files on your day of interest
+            self.get_file_list()
+            #this will grab the one file that has the time you gave it 
+            self.locate_file()
+            #this will download it locally
+            self.download(savedir=savedir)
         
     def get_file_list(self):
         """ 
@@ -47,8 +53,7 @@ class netrunner():
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
         elif self.servername=='Research':
-            ftp = FTP(self.server)
-            ftp.login(self.username,self.username)
+            server = 'https://arthurhouhttps.pps.eosdis.nasa.gov/text/'
             year = padder(self.s_time.year)
             month = padder(self.s_time.month)
             day = padder(self.s_time.day)
@@ -56,17 +61,20 @@ class netrunner():
                 dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/Xradar/' 
             else:
                 dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/radar/' 
-            ftp.cwd(dir_str)
-            file_list = ftp.nlst()
-            file_list.sort()
-            self.ftp = ftp
+
+            url = server + dir_str
+            cmd = 'curl -u randyjc2@illinois.edu:randyjc2@illinois.edu -n ' + url
+            args = cmd.split()
+            process = subprocess.Popen(args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+            stdout = process.communicate()[0].decode()
+            file_list = stdout.split()
             
             if self.Xradar:
                 file_list = [i for i in file_list if '2A.GPM.DPRX.V8' in i]
             else:
                 file_list = [i for i in file_list if '2A.GPM.DPR.V8' in i]
-            
-                
         self.file_list = file_list 
         
         
@@ -174,7 +182,7 @@ class netrunner():
     def download(self,savedir='./'):
         if len(self.filename) > 1:
             print('Ope: Multiple file downloads not currently supported. Sorry.')
-        elif self.servername=='NearRealTime':
+        else:
             url = self.server + self.filename[0]
             print('Downloading: {}'.format(url))
             cmd = 'curl -s -u ' + self.username+':'+self.username+' ' + url + ' -o ' + \
@@ -184,9 +192,4 @@ class netrunner():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
             process.wait()
-            print('Done')
-        elif self.servername=='Research':
-            print('Downloading: {}'.format(self.filename[0]))
-            with open(savedir+self.filename[0], 'wb') as fp:
-                self.ftp.retrbinary('RETR '+self.filename[0], fp.write)
             print('Done')

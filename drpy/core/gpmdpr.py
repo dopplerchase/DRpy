@@ -28,7 +28,7 @@ class GPMDPR():
 
     """
 
-    def __init__(self,filename=[],boundingbox=None,outer_swath=False): 
+    def __init__(self,filename=[],boundingbox=None,outer_swath=False,auto_run=True): 
         """ Initializes things.
         filename: str, path to GPM-DPR file 
         boundingbox: list of floats, if you would like to cut the gpm to a lat lon box 
@@ -46,6 +46,14 @@ class GPMDPR():
             self.legacy = False
         else:
             self.legacy = True 
+        
+        if auto_run:
+            #this reads the hdf5 file 
+            self.read()
+            #this calculates the range height for the 2D cross-sections 
+            self.calc_heights()
+            #this will convert the hdf to an xarray dataset
+            self.toxr()
         
     def read(self):
         """
