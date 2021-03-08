@@ -10,7 +10,7 @@ Dual-frequency precipitation Radar PYthon package (DRpy)
 
 (pronounced derpy)
 
-**NOTE: The io functions fixed (08 March 2021)** 
+<font color='red'> **NOTE: The io functions fixed (08 March 2021)** </font>
 
 I look forward to having my custom plotting function avail. to everyone later this month. 
 
