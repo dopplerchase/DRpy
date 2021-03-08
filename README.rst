@@ -10,9 +10,9 @@ Dual-frequency precipitation Radar PYthon package (DRpy)
 
 (pronounced derpy)
 
-**NOTE: The io functions are broken since NASA changed to ftps (03 March 2021)** 
+**NOTE: The io functions fixed (08 March 2021)** 
 
-Unfortunatley, with wrapping up PhD topics and starting PostDoc projects. This project has been sidelined for the foreseable future. 
+I look forward to having my custom plotting function avail. to everyone later this month. 
 
 ############################################
 
