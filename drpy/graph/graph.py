@@ -89,7 +89,7 @@ class case_study:
     dpr.read()
     dpr.calc_heights()
     dpr.toxr(clutter=False,echotop=False)
-    corners = [lon_r - 5,lon_r + 5,lat_r-5,lat_r+5]
+    corners = [center_lon - 5,center_lon + 5,center_lat-5,center_lat+5]
     dpr.corners = corners
     dpr.setboxcoords()
     #drop dead weight (i.e. blank data)
