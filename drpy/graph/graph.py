@@ -198,7 +198,8 @@ class case_study:
     ax_cbar = fig.add_axes([0.6, 0.85, 0.33, 0.015])
     text = ax_cbar.text(-0.33,0,'$DFR_{Ku-Ka}$, [$dB$]',fontsize=10,transform=ax_cbar.transAxes)
     text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
-    cb2 = make_colorbar(ax_cbar,-2,10,cmaps.turbo)
+    import drpy 
+    cb2 = make_colorbar(ax_cbar,-2,10,drpy.graph.cmaps.turbo)
 
     #fill cross-sections 
 
