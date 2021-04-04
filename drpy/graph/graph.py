@@ -75,7 +75,7 @@ class APR_plot_obj():
 def make_colorbar(ax,vmin,vmax,cmap):
     cNorm  = colors.Normalize(vmin=vmin, vmax=vmax)
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
-    cb1 = mpl.colorbar.ColorbarBase(ax, cmap=cmap,
+    cb1 = matplotlib.colorbar.ColorbarBase(ax, cmap=cmap,
                               norm=cNorm,
                               orientation='horizontal',extend='both')
     return cb1
