@@ -197,7 +197,7 @@ class case_study:
     ax_cbar = fig.add_axes([0.6, 0.85, 0.33, 0.015])
     text = ax_cbar.text(-0.33,0,'$DFR_{Ku-Ka}$, [$dB$]',fontsize=10,transform=ax_cbar.transAxes)
     text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
-    cb2 = make_colorbar(ax_cbar,-2,10,drpy.graph.cmaps.turbo)
+    cb2 = make_colorbar(ax_cbar,-2,10,plt.cm.turbo)
 
     #fill cross-sections 
 
@@ -225,7 +225,7 @@ class case_study:
     text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
 
     ax = axs[2]
-    pm = ax.pcolormesh(self.dpr.xrds.distance.values[s:e,w],self.dpr.xrds.MSKa.alt.values[s,w,:],ku.values[s:e,w,:].T-ka.values[s:e,w,:].T,cmap=drpy.graph.cmaps.turbo,vmin=-2,vmax=10,levels=np.linspace(-2, 10, 50))
+    pm = ax.pcolormesh(self.dpr.xrds.distance.values[s:e,w],self.dpr.xrds.MSKa.alt.values[s,w,:],ku.values[s:e,w,:].T-ka.values[s:e,w,:].T,cmap='turbo',vmin=-2,vmax=10,levels=np.linspace(-2, 10, 50))
     ax.set_ylim([0,params['y_max']])
     # ax.yaxis.set_ticks(np.arange(0,params['y_max']+2,2))
     ax.xaxis.set_ticklabels(ax.xaxis.get_ticklocs())
