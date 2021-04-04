@@ -16,6 +16,7 @@ from mpl_toolkits.axes_grid1 import AxesGrid
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 import matplotlib.colors as colors
 import matplotlib.patheffects as PathEffects
+from . import colormaps_drpy as cmaps
 
 class APR_plot_obj():
     """Author: Randy J. Chase. This object has lots of built in plotting functions for the xarray dataset created by drpy.core.APR"""
@@ -197,7 +198,7 @@ class case_study:
     ax_cbar = fig.add_axes([0.6, 0.85, 0.33, 0.015])
     text = ax_cbar.text(-0.33,0,'$DFR_{Ku-Ka}$, [$dB$]',fontsize=10,transform=ax_cbar.transAxes)
     text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
-    cb2 = make_colorbar(ax_cbar,-2,10,plt.cm.turbo)
+    cb2 = make_colorbar(ax_cbar,-2,10,cmaps.turbo)
 
     #fill cross-sections 
 
@@ -232,3 +233,4 @@ class case_study:
     text = ax.text(0.025,0.85,'DFR',fontsize=12,transform=ax.transAxes)
     text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
     ax.set_xlabel('Along Track Distance, [km]',labelpad=8)
+
