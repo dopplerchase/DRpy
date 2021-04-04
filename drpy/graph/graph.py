@@ -1,273 +1,22 @@
 import numpy as np
 import matplotlib.pyplot as plt 
 import matplotlib
-from . import cmaps
+import matplotlib.cm as cmx
+import matplotlib.colors as colors 
+import cartopy
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import matplotlib.ticker as mticker
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import matplotlib.patheffects as PathEffects
+import cartopy.io.shapereader as shpreader
+import pandas as pd 
+from cartopy.mpl.geoaxes import GeoAxes
+from mpl_toolkits.axes_grid1 import AxesGrid
+from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
+import matplotlib.colors as colors
+import matplotlib.patheffects as PathEffects
 
-#plot parameters that I personally like, feel free to make these your own.
-matplotlib.rcParams['axes.facecolor'] = [0.9,0.9,0.9]
-matplotlib.rcParams['axes.labelsize'] = 14
-matplotlib.rcParams['axes.titlesize'] = 14
-matplotlib.rcParams['xtick.labelsize'] = 12
-matplotlib.rcParams['ytick.labelsize'] = 12
-matplotlib.rcParams['legend.fontsize'] = 12
-matplotlib.rcParams['legend.facecolor'] = 'w'
-
-class GPMDPR_plot_obj():
-    """Author: Randy J. Chase. This object has lots of built in plotting functions for the xarray dataset created by drpy.core.GPMDPR"""
-
-    def __init__(self,GPMDPR=None,notebook=False): 
-        if GPMDPR is None:
-            self.xrds = None
-            self.corners=None
-        else:
-            self.xrds = GPMDPR.xrds
-            self.corners = GPMDPR.corners
-        
-        self.graphdict = {'title':None,'xlabel':None,'ylabel':None,'xlim':None,'ylim':None}
-        
-    def mapper(self,z = None,extent=None,vmin=None,vmax=None,cmap='cividis',box=False):
-        """
-        This method creates a cartopy map of the data held in the xrds.
-        z is what is desired to be plotted at each lat and lon pair. If 
-        z is none, then it will default to just showing where all the footprints are. 
-        
-        """
-        
-        #import cartopy stuff
-        import cartopy
-        import cartopy.crs as ccrs
-        import cartopy.feature as cfeature
-        import matplotlib.ticker as mticker
-        from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
-        import cartopy.io.shapereader as shpreader
-        from cartopy.mpl.geoaxes import GeoAxes
-        from mpl_toolkits.axes_grid1 import AxesGrid
-        from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
-        
-        #make figure
-        fig = plt.figure(figsize=(10, 10))
-        #add the map
-        ax = fig.add_subplot(1, 1, 1,projection=ccrs.PlateCarree())
-        ax.add_feature(cfeature.STATES.with_scale('50m'),lw=0.5)
-        ax.add_feature(cartopy.feature.OCEAN.with_scale('50m'))
-        ax.add_feature(cartopy.feature.LAND.with_scale('50m'), edgecolor='black',lw=0.5,facecolor=[0.95,0.95,0.95])
-        ax.add_feature(cartopy.feature.LAKES.with_scale('50m'), edgecolor='black')
-        ax.add_feature(cartopy.feature.RIVERS.with_scale('50m'))
-
-
-        if (self.corners is not None) and box:
-            ax.plot([corners[0],corners[0],corners[1],corners[1],corners[0]],[corners[2],corners[3],corners[3],corners[2],corners[2]],'-r',lw=3)
-            ax.plot(center_lon,center_lat,'w*',ms=16,zorder=7)
-            
-        if z is None:
-            ax.scatter(self.xrds.lons,self.xrds.lats,zorder=5)
-        else:
-            pm = ax.scatter(self.xrds.lons,self.xrds.lats,c=z,cmap=cmap,s=25,vmin=vmin,vmax=vmax,zorder=5)
-            cbar = plt.colorbar(pm,ax=ax,shrink=0.5)
-            cbar.set_label(z.name + ', [' + z.units + ']')
-        
-        ax.plot(self.xrds.lons,self.xrds.lats,'o',fillstyle='none',color='k',markeredgewidth=0.1,ms=4,zorder=6)
-                
-        if (self.corners is not None) and (extent is None):
-            #for some reason set_extent crashes the session on colab. 
-#             ax.set_extent(self.corners)
-            ax.set_xlim([self.corners[0],self.corners[1]])
-            ax.set_ylim([self.corners[2],self.corners[3]])
-            ax.set_xticks(np.arange(self.corners[0], self.corners[1], 1), crs=ccrs.PlateCarree())
-            ax.set_yticks(np.linspace(self.corners[2], self.corners[3], 5), crs=ccrs.PlateCarree())
-            lon_formatter = LongitudeFormatter(zero_direction_label=True)
-            lat_formatter = LatitudeFormatter()
-            ax.xaxis.set_major_formatter(lon_formatter)
-            ax.yaxis.set_major_formatter(lat_formatter)
-        elif (self.corners is not None) and (extent is not None):
-            #for some reason set_extent crashes the session on colab.
-#             ax.set_extent(extent)
-            ax.set_xlim([extent[0],extent[1]])
-            ax.set_ylim([extent[2],extent[3]])
-            ax.set_xticks(np.linspace(extent[0], extent[1], 5), crs=ccrs.PlateCarree())
-            ax.set_yticks(np.linspace(extent[2], extent[3], 5), crs=ccrs.PlateCarree())
-            lon_formatter = LongitudeFormatter(zero_direction_label=True)
-            lat_formatter = LatitudeFormatter()
-            ax.xaxis.set_major_formatter(lon_formatter)
-            ax.yaxis.set_major_formatter(lat_formatter)
-        elif (self.corners is None) and (extent is not None):
-            #for some reason set_extent crashes the session on colab.
-#             ax.set_extent(extent)
-            ax.set_xlim([extent[0],extent[1]])
-            ax.set_ylim([extent[2],extent[3]])
-            ax.set_xticks(np.linspace(extent[0], extent[1], 5), crs=ccrs.PlateCarree())
-            ax.set_yticks(np.linspace(extent[2], extent[3], 5), crs=ccrs.PlateCarree())
-            lon_formatter = LongitudeFormatter(zero_direction_label=True)
-            lat_formatter = LatitudeFormatter()
-            ax.xaxis.set_major_formatter(lon_formatter)
-            ax.yaxis.set_major_formatter(lat_formatter)
-            
-        self.ax = ax 
-            
-    def CFAD(self,variablekey=None,bins=None,mincnt=20,graphdict=None):
-        
-        if self.xrds is None:
-            print('ERROR, no GPMDPR object found. Please add one.')
-        else:
-            if graphdict is None:
-                graphdict = self.graphdict
-
-            if (bins is None and variablekey is None) or (bins is None and variablekey is 'NSKu'):
-                #set some default ranges, these are for snow at Ku-band
-                z_up = np.linspace(0,7,25)
-                z_right = np.linspace(10,35,25)
-                bins = [z_right,z_up]
-                variablekey = 'NSKu'
-                variable = self.xrds[variablekey].values.ravel()
-                
-            elif bins is None and variablekey is 'DFR':
-                #set some default ranges, these are for snow at Ku-band
-                z_up = np.linspace(0,7,25)
-                z_right = np.linspace(-5,10,25)
-                bins = [z_right,z_up]
-                variable = self.xrds['NSKu'].values.ravel() - self.xrds['MSKa'].values.ravel()
-            
-            elif variablekey is not None:
-                variable = self.xrds[variablekey].values.ravel()
-                
-            hist = np.histogram2d(variable,self.xrds.alt.values.ravel(),bins=bins)
-            
-            z_right = bins[0]
-            z_up = bins[1]
-            mat_tot = hist[0]
-            mat_norm = np.zeros(mat_tot.shape)
-            
-            for i in np.arange(0,z_up.shape[0]-1):
-                # row_sum = np.sum(mat_tot[:,i])
-                row_sum = np.ma.max(mat_tot[:,i])
-                mat_norm[:,i] = mat_tot[:,i]/row_sum
-
-
-            midpoints_x = np.zeros(len(z_right)-1)
-            for i in np.arange(0,len(z_right)-1):
-                midpoints_x[i] = z_right[i] + (z_right[i+1] - z_right[i])/2.
-
-            midpoints_y = np.zeros(len(z_up)-1)
-            for i in np.arange(0,len(z_up)-1):
-                midpoints_y[i] = z_up[i]  + (z_up[i+1] - z_up[i])/2.
-
-            mat_norm= np.ma.masked_where(mat_tot < mincnt,mat_norm)
-            fig = plt.figure(figsize=(5,5))
-            fig.set_facecolor('w')
-            ax = plt.gca()
-            pm = ax.contourf(midpoints_x,midpoints_y,mat_norm.T,np.linspace(0.05,1,10),cmap=cmaps.turbo)
-            ax.contour(midpoints_x,midpoints_y,mat_norm.T,np.linspace(0.05,1,10),colors='w',linewidths=0.2)
-
-
-            cbar = plt.colorbar(pm,ax=ax)
-            cbar.set_label('Normalized Frequency',fontsize=14)
-            cbar.ax.tick_params(labelsize=12)
-            ax.set_facecolor([0.9,0.9,0.9])
-            ax.tick_params(labelsize=12)
-            ax.set_xlabel(graphdict['xlabel'],fontsize=14)
-            ax.set_ylabel(graphdict['ylabel'],fontsize=14)
-            ax.set_title(graphdict['title'],fontsize=14)
-
-            plt.tight_layout()
-            
-            
-    def CFTD(self,variablekey=None,bins=None,mincnt=20,graphdict=None):
-        
-        if self.xrds is None:
-            print('ERROR, no GPMDPR object found. Please add one.')
-        else:
-
-            if graphdict is None:
-                graphdict = self.graphdict
-                graphdict['ylabel'] = 'MERRA2 Temperature, [$\degree{C}$]'
-
-            if bins is None and variablekey is None:
-                #set some default ranges, these are for snow at Ku-band
-                z_up = np.linspace(-25,5,25)
-                z_right = np.linspace(10,35,25)
-                bins = [z_right,z_up]
-                variablekey = 'NSKu'
-                variable = self.xrds[variablekey].values.ravel()
-                #build label string 
-                labelstr = variablekey + '  [' + self.xrds[variablekey].units + ']'
-                graphdict['xlabel'] = labelstr
-                
-                
-            elif bins is None and variablekey is 'DFR':
-                #set some default ranges, these are for snow at Ku-band
-                z_up = np.linspace(-25,5,25)
-                z_right = np.linspace(-5,10,25)
-                bins = [z_right,z_up]
-                variable = self.xrds['NSKu'].values.ravel() - self.xrds['MSKa'].values.ravel()
-                #build label string 
-                labelstr = variablekey + ' [dB]'
-                graphdict['xlabel'] = labelstr
-                
-            elif bins is None and variablekey is 'DFR_c':
-                #set some default ranges, these are for snow at Ku-band
-                z_up = np.linspace(-25,5,25)
-                z_right = np.linspace(-5,10,25)
-                bins = [z_right,z_up]
-                variable = self.xrds['NSKu_c'].values.ravel() - self.xrds['MSKa_c'].values.ravel()
-                #build label string 
-                labelstr = variablekey + ' [dB]'
-                graphdict['xlabel'] = labelstr
-            
-            elif variablekey is not None:
-                variable = self.xrds[variablekey].values.ravel()
-                #build label string 
-                labelstr = variablekey + '  [' + self.xrds[variablekey].units + ']'
-                graphdict['xlabel'] = labelstr
-                
-                if bins is None:
-                    Q = np.nanpercentile(variable,[0.1,99.9])
-                    z_up = np.linspace(-25,5,25)
-                    z_right = np.linspace(Q[0],Q[1],25)
-                    bins = [z_right,z_up]
-                    
-                    
-                
-            hist = np.histogram2d(variable,self.xrds.T.values.ravel()-273,bins=bins)
-            
-            z_right = bins[0]
-            z_up = bins[1]
-            mat_tot = hist[0]
-            mat_norm = np.zeros(mat_tot.shape)
-            
-            for i in np.arange(0,z_up.shape[0]-1):
-                # row_sum = np.sum(mat_tot[:,i])
-                row_sum = np.ma.max(mat_tot[:,i])
-                mat_norm[:,i] = mat_tot[:,i]/row_sum
-
-
-            midpoints_x = np.zeros(len(z_right)-1)
-            for i in np.arange(0,len(z_right)-1):
-                midpoints_x[i] = z_right[i] + (z_right[i+1] - z_right[i])/2.
-
-            midpoints_y = np.zeros(len(z_up)-1)
-            for i in np.arange(0,len(z_up)-1):
-                midpoints_y[i] = z_up[i]  + (z_up[i+1] - z_up[i])/2.
-
-            mat_norm= np.ma.masked_where(mat_tot < mincnt,mat_norm)
-            fig = plt.figure(figsize=(5,5))
-            fig.set_facecolor('w')
-            ax = plt.gca()
-            pm = ax.contourf(midpoints_x,midpoints_y,mat_norm.T,np.linspace(0.05,1,10),cmap=cmaps.turbo)
-            ax.contour(midpoints_x,midpoints_y,mat_norm.T,np.linspace(0.05,1,10),colors='w',linewidths=0.2)
-
-
-            cbar = plt.colorbar(pm,ax=ax)
-            cbar.set_label('Normalized Frequency',fontsize=14)
-            cbar.ax.tick_params(labelsize=12)
-            ax.set_facecolor([0.9,0.9,0.9])
-            ax.tick_params(labelsize=12)
-            ax.set_xlabel(graphdict['xlabel'],fontsize=14)
-            ax.set_ylabel(graphdict['ylabel'],fontsize=14)
-            ax.set_title(graphdict['title'],fontsize=14)
-            ax.invert_yaxis()
-
-            plt.tight_layout()
-            
 class APR_plot_obj():
     """Author: Randy J. Chase. This object has lots of built in plotting functions for the xarray dataset created by drpy.core.APR"""
     def __init__(self,APR=None): 
@@ -321,3 +70,165 @@ class APR_plot_obj():
         plt.tight_layout()
 
         plt.show()
+
+
+def make_colorbar(ax,vmin,vmax,cmap):
+    cNorm  = colors.Normalize(vmin=vmin, vmax=vmax)
+    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
+    cb1 = mpl.colorbar.ColorbarBase(ax, cmap=cmap,
+                              norm=cNorm,
+                              orientation='horizontal',extend='both')
+    return cb1
+
+class case_study:
+
+  def __init__(self,filename=None,center_lat=None,center_lon=None):
+
+    import drpy 
+    dpr = drpy.core.GPMDPR(filename=filename,outer_swath=True,auto_run=False)
+    dpr.read()
+    dpr.calc_heights()
+    dpr.toxr(clutter=False,echotop=False)
+    corners = [lon_r - 5,lon_r + 5,lat_r-5,lat_r+5]
+    dpr.corners = corners
+    dpr.setboxcoords()
+    #drop dead weight (i.e. blank data)
+    dpr.xrds = dpr.xrds.dropna(dim='along_track',how='all')
+    self.dpr = dpr
+
+  def plotter(self,start_index=25,end_index=-25,scan=24,params_new=None):
+
+    if params_new is None:
+      params = {'z_vmin':10,'z_vmax':40,'y_max':10}
+    else:
+      params = {'z_vmin':10,'z_vmax':40,'y_max':10}
+      keys_old = list(params.keys())
+      keys = list(params_new.keys())
+      for key in keys: 
+        for i in keys_old:
+                if key in i:
+                  params[key] = params_new[key]
+
+
+    import proplot as plot
+    #plot parameters that I personally like, feel free to make these your own.
+    matplotlib.rcParams['axes.facecolor'] = [0.9,0.9,0.9]
+    matplotlib.rcParams['axes.labelsize'] = 14
+    matplotlib.rcParams['axes.titlesize'] = 14
+    matplotlib.rcParams['xtick.labelsize'] = 12
+    matplotlib.rcParams['ytick.labelsize'] = 12
+    matplotlib.rcParams['legend.fontsize'] = 12
+    matplotlib.rcParams['legend.facecolor'] = 'w'
+    matplotlib.rcParams['savefig.transparent'] = False
+
+    #determine center
+    s = 0 
+    e = self.dpr.xrds.lons.shape[0]
+    middle = int((e-s)/2)
+    lon0 = self.dpr.xrds.lons.values[middle,24]
+    lat0 = self.dpr.xrds.lats.values[middle,24]
+    #set specific aspect for cartopy plot
+    x = 7.5
+    y = 0.6666666*x
+    corners = [lon0-x,lon0+x,lat0-y,lat0+y]
+
+    #draw axes with proplot
+    array = [  # the "picture" (1 == subplot A, 2 == subplot B, etc.)
+    [1,1,1,0,0,0,0],
+    [1,1,1, 4,4,4,4],
+    [2,2,2,4,4,4,4],
+    [2,2,2,4,4,4,4],
+    [3,3,3,4,4,4,4],
+    [3,3,3,0,0,0,0]]
+    fig, axs = plot.subplots(array, width=10,height=5,span=False,proj={4:'cyl'},tight=False)
+    fig.set_facecolor('w')
+
+    #do things to map subplot 
+    ax = axs[3]
+    ax.format(borderscolor='k',gridminor=True,
+              borders=True,lonlabels='t', latlabels='l',
+              lonlim=(corners[0], corners[1]), latlim=(corners[2], corners[3]))
+    
+    box = ax.get_position()
+    box.y0 = box.y0 - 0.05
+    box.y1 = box.y1 - 0.05
+    box.x0 = box.x0 + 0.01
+    box.x1 = box.x1 + 0.01
+    ax.set_position(box)
+    # ax.set_extent(corners)
+    ax.add_feature(cartopy.feature.LAND.with_scale('50m'),facecolor=[0.9,0.9,0.9])
+    ax.add_feature(cartopy.feature.OCEAN.with_scale('50m'))
+    plt.setp(ax.spines.values(), color='orangered',lw=2)
+    #plot swath (descending)
+    ax.plot(self.dpr.xrds.lons[:,0]+0.0485,self.dpr.xrds.lats[:,0],'--k')
+    ax.plot(self.dpr.xrds.lons[:,-1]-0.0485,self.dpr.xrds.lats[:,-1],'--k')
+
+    self.dpr.extract_nearsurf()
+
+    #plot data 
+    pm = ax.scatter(self.dpr.xrds.lons[:,:],self.dpr.xrds.lats[:,:],c=self.dpr.xrds.nearsurfaceKu[:,:],vmin=params['z_vmin'],vmax=params['z_vmax'],s=1,cmap='Spectral_r',linewidths=0.1,zorder=10)
+    s = start_index
+    e = end_index
+    w = scan
+
+    ax.plot(self.dpr.xrds.lons[s:e,w],self.dpr.xrds.lats[s:e,w],'-k',markerfacecolor='w',ms=10,zorder=12)
+    ax.plot(self.dpr.xrds.lons[s,w],self.dpr.xrds.lats[s,w],'k',markerfacecolor='w',ms=10,label='Start',marker='$L$',markeredgewidth=1,zorder=12)
+    ax.plot(self.dpr.xrds.lons[e,w],self.dpr.xrds.lats[e,w],'k',markerfacecolor='w',ms=10,label='End',marker='$R$',markeredgewidth=1,zorder=12)
+
+    ax.add_feature(cartopy.feature.COASTLINE.with_scale('50m'),color='k',zorder=11)
+
+    #add zoomed out map for context
+    inset_axis = ax.inset([0.575,-0.4,0.5,0.5],proj='cyl',zoom=False,zorder=11)
+    inset_axis.format(land=True,landcolor=[0.9,0.9,0.9],borderscolor='k',gridminor=True)
+    inset_axis.add_feature(cartopy.feature.OCEAN.with_scale('50m'))
+    inset_axis.plot(self.dpr.xrds.lons[:,0]+0.0485,self.dpr.xrds.lats[:,0],'--k',lw=0.5,)
+    inset_axis.plot(self.dpr.xrds.lons[:,-1]-0.0485,self.dpr.xrds.lats[:,-1],'--k',lw=0.5,)
+    inset_axis.plot([corners[0],corners[0],corners[1],corners[1],corners[0]],[corners[2],corners[3],corners[3],corners[2],corners[2]],'-',color='orangered')
+    timestr = pd.to_datetime(self.dpr.xrds.time[middle,24].values).strftime(format='%Y-%m-%d %H:%M')
+    text = inset_axis.text(-0.05,-0.2,'Scan Time: ' + timestr,transform=ax.transAxes,fontsize=10)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+    text = inset_axis.text(0.025,-0.275,'Created with DRpy',transform=ax.transAxes,fontsize=10)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+    #draw colorbars in better spot
+    ax_cbar = fig.add_axes([0.6, 0.93, 0.33, 0.015])
+    text = ax_cbar.text(-0.25,0,'$Z_{e}$, [$dBZ$]',fontsize=10,transform=ax_cbar.transAxes)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+    cb1 = make_colorbar(ax_cbar,params['z_vmin'],params['z_vmax'],plt.cm.Spectral_r)
+    ax_cbar = fig.add_axes([0.6, 0.85, 0.33, 0.015])
+    text = ax_cbar.text(-0.33,0,'$DFR_{Ku-Ka}$, [$dB$]',fontsize=10,transform=ax_cbar.transAxes)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+    cb2 = make_colorbar(ax_cbar,-2,10,drpy.graph.cmaps.turbo)
+
+    #fill cross-sections 
+
+
+    self.dpr.extract_nearsurf()
+    self.dpr.get_physcial_distance(reference_point=[self.dpr.xrds.lons.values[s,w],self.dpr.xrds.lats.values[s,w]])
+
+    ax = axs[0]
+    ku = self.dpr.xrds.NSKu.where(self.dpr.xrds.NSKu >= 10)
+    pm = ax.pcolormesh(self.dpr.xrds.distance.values[s:e,w],self.dpr.xrds.NSKu.alt.values[s,w,:],ku.values[s:e,w,:].T,cmap='Spectral_r',vmin=params['z_vmin'],vmax=params['z_vmax'],levels=np.linspace(params['z_vmin'], params['z_vmax'], 50))
+    ax.set_ylim([0,params['y_max']])
+    # ax.yaxis.set_ticks(np.arange(0,params['y_max']+2,2))
+    ax.xaxis.set_ticklabels([])
+    text = ax.text(0.025,0.85,'KuPR',fontsize=12,transform=ax.transAxes)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+
+    ax = axs[1]
+    ka = self.dpr.xrds.MSKa.where(self.dpr.xrds.MSKa >= 15)
+    pm = ax.pcolormesh(self.dpr.xrds.distance.values[s:e,w],self.dpr.xrds.NSKu.alt.values[s,w,:],ka.values[s:e,w,:].T,cmap='Spectral_r',vmin=params['z_vmin'],vmax=params['z_vmax'],levels=np.linspace(params['z_vmin'], params['z_vmax'], 50))
+    ax.set_ylim([0,params['y_max']])
+    # ax.yaxis.set_ticks(np.arange(0,params['y_max']+2,2))
+    ax.xaxis.set_ticklabels([])
+    ax.set_ylabel('Alt ASL, [km]',labelpad=15)
+    text = ax.text(0.025,0.85,'KaPR',fontsize=12,transform=ax.transAxes)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+
+    ax = axs[2]
+    pm = ax.pcolormesh(self.dpr.xrds.distance.values[s:e,w],self.dpr.xrds.MSKa.alt.values[s,w,:],ku.values[s:e,w,:].T-ka.values[s:e,w,:].T,cmap=drpy.graph.cmaps.turbo,vmin=-2,vmax=10,levels=np.linspace(-2, 10, 50))
+    ax.set_ylim([0,params['y_max']])
+    # ax.yaxis.set_ticks(np.arange(0,params['y_max']+2,2))
+    ax.xaxis.set_ticklabels(ax.xaxis.get_ticklocs())
+    text = ax.text(0.025,0.85,'DFR',fontsize=12,transform=ax.transAxes)
+    text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
+    ax.set_xlabel('Along Track Distance, [km]',labelpad=8)

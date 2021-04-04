@@ -108,7 +108,7 @@ class GPMDPR():
         da = xr.DataArray(prh[12:37,:], dims=['cross_track','range'])
         da.to_netcdf('./HEIGHTS.nc')
         
-    def toxr(self,ptype=None,clutter=True,echotop=True,precipflag=10):
+    def toxr(self,ptype=None,clutter=False,echotop=False,precipflag=10):
         """
         This is the main method of the package. It directly creates the xarray dataset from the HDF file. 
         
