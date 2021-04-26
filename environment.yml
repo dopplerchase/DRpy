@@ -1,0 +1,19 @@
+name: drpy
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8
+  - numpy=1.18.*
+  - scipy
+  - matplotlib
+  - xarray
+  - netcdf4
+  - pyyaml
+  - pandas
+  - scikit-learn
+  - pyproj
+  - dask
+  - distributed
+  - cartopy=0.18
+  - pip
+  - proplot 
