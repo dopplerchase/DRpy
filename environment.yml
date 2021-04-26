@@ -17,3 +17,4 @@ dependencies:
   - cartopy=0.18
   - pip
   - proplot 
+  - h5py
