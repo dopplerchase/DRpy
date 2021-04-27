@@ -5,6 +5,7 @@ dependencies:
   - python=3.8.5
   - numpy
   - scipy
+  - matplotlib=3.2
   - proplot
   - xarray
   - netcdf4
