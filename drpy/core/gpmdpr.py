@@ -42,7 +42,8 @@ class GPMDPR():
         self.retrieval_flag = 0
         self.interp_flag = 0
         self.outer_swath = outer_swath
-        if filename.find('X') >= 0:
+        #determine if you have to use the file variable name changes 
+        if (filename.find('X') >= 0) or (filename.find('V9') >= 0):
             self.legacy = False
         else:
             self.legacy = True 
