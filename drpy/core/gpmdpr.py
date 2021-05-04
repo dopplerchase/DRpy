@@ -1500,7 +1500,7 @@ class GPMDPR():
         else:
             day = str(day)
 
-        ds_url = '/data/gpm/a/randyjc2/MERRA/PROFILE/'+ str(year) + '/' + 'MERRA2_400.inst6_3d_ana_Np.'+ str(year) + month + day+ '.nc4'
+        ds_url = '/data/accp/a/snesbitt/merra-2/PROFILE/'+ str(year) + '/' + 'MERRA2_400.inst6_3d_ana_Np.'+ str(year) + month + day+ '.nc4'
 
         ###load file
         merra = xr.open_dataset(ds_url,chunks={'lat': 361, 'lon': 576})
