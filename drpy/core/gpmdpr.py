@@ -43,8 +43,12 @@ class GPMDPR():
         self.interp_flag = 0
         self.outer_swath = outer_swath
         #determine if you have to use the file variable name changes 
-        if (filename.find('X') >= 0) or (filename.find('V9') >= 0):
+        if (filename.find('X') >= 0):
             self.legacy = False
+            self.v07 = False
+        elif (filename.find('V9') >= 0):
+            self.legacy = False
+            self.v07 = True
         else:
             self.legacy = True 
         
@@ -848,8 +852,14 @@ class GPMDPR():
                    da.attrs['units'] = 'none'
                    da.attrs['standard_name'] = 'flag to remove ground clutter'
                    self.xrds['clutter'] = da
-
-                da = xr.DataArray(self.hdf['FS']['SLV']['zFactorCorrectedNearSurface'][:,:,0], 
+                
+                #note, the v07 files use zFactorFinalNearSurf... have to adjust the key here
+                if self.v07:
+                    temp_key = 'zFactorFinalNearSurface'
+                else:
+                    temp_key = 'zFactorCorrectedNearSurface'
+                    
+                da = xr.DataArray(self.hdf['FS']['SLV'][temp_key][:,:,0], 
                                dims=['along_track', 'cross_track'],
                                coords={'lons': (['along_track','cross_track'],lons),
                                        'lats': (['along_track','cross_track'],lats),
@@ -859,7 +869,7 @@ class GPMDPR():
                 da = da.where(da >= 12)
                 self.xrds['nearsurfaceKu'] = da
 
-                da = xr.DataArray(self.hdf['FS']['SLV']['zFactorCorrectedNearSurface'][:,:,1], 
+                da = xr.DataArray(self.hdf['FS']['SLV'][temp_key][:,:,1], 
                                dims=['along_track', 'cross_track'],
                                coords={'lons': (['along_track','cross_track'],lons),
                                        'lats': (['along_track','cross_track'],lats),
@@ -868,8 +878,14 @@ class GPMDPR():
                 da.attrs['standard_name'] = 'near surface Ka'
                 da = da.where(da >= 15)
                 self.xrds['nearsurfaceKa'] = da
+                
+                #note, the v07 files use zFactorFinal.. have to adjust the key here
+                if self.v07:
+                    temp_key = 'zFactorFinal'
+                else:
+                    temp_key = 'zFactorCorrected'
 
-                da = xr.DataArray(self.hdf['FS']['SLV']['zFactorCorrected'][:,:,:,0], 
+                da = xr.DataArray(self.hdf['FS']['SLV'][temp_key][:,:,:,0], 
                                   dims=['along_track', 'cross_track','range'],
                                   coords={'lons': (['along_track','cross_track'],lons),
                                           'lats': (['along_track','cross_track'],lats),
@@ -894,7 +910,7 @@ class GPMDPR():
                 da.attrs['standard_name'] = 'epsilon value for retrieval'
                 self.xrds['epsilon'] = da
 
-                da = xr.DataArray(self.hdf['FS']['SLV']['zFactorCorrected'][:,:,:,1], 
+                da = xr.DataArray(self.hdf['FS']['SLV'][temp_key][:,:,:,1], 
                                   dims=['along_track', 'cross_track','range'],
                                   coords={'lons': (['along_track','cross_track'],lons),
                                           'lats': (['along_track','cross_track'],lats),
