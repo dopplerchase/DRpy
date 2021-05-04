@@ -1525,7 +1525,7 @@ class GPMDPR():
             self.interp_flag = 1
             
         if getsurf:
-            ds_url ='/data/accp/a/snesbitt/merra-2/SURF/'+ str(year) + '/' + 'MERRA2_400.tavg1_2d_slv_Nx.'+str(year) + month + day +'.nc4'
+            ds_url ='/data/accp/a/snesbitt/merra-2/SURFACE/'+ str(year) + '/' + 'MERRA2_400.tavg1_2d_slv_Nx.'+str(year) + month + day +'.nc4'
 
             ###load file
             merra = xr.open_dataset(ds_url)
