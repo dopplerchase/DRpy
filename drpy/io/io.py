@@ -65,6 +65,7 @@ class netrunner():
 
             url = server + dir_str
             cmd = 'curl -s -u ' + self.username+':'+self.username+' -n ' + url
+            self.cmd = cmd
             args = cmd.split()
             process = subprocess.Popen(args,
             stdout=subprocess.PIPE,
