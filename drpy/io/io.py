@@ -46,6 +46,7 @@ class netrunner():
         if self.servername=='NearRealTime':
             url = self.server + '/radar/DprL2/' 
             cmd = 'curl -s -u ' + self.username+':'+self.username+' ' + url
+            self.cmd = cmd
             args = cmd.split()
             process = subprocess.Popen(args,
             stdout=subprocess.PIPE,
@@ -63,7 +64,7 @@ class netrunner():
                 dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/radar/' 
 
             url = server + dir_str
-            cmd = 'curl -u randyjc2@illinois.edu:randyjc2@illinois.edu -n ' + url
+            cmd = 'curl -s -u ' + self.username+':'+self.username+' -n ' + url
             args = cmd.split()
             process = subprocess.Popen(args,
             stdout=subprocess.PIPE,
@@ -71,10 +72,12 @@ class netrunner():
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
             
+            #note, won't need this bit for the next version, X products will be gone 
             if self.Xradar:
                 file_list = [i for i in file_list if '2A.GPM.DPRX.V8' in i]
             else:
                 file_list = [i for i in file_list if '2A.GPM.DPR.V8' in i]
+                
         self.file_list = file_list 
         
         
