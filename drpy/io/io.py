@@ -64,7 +64,7 @@ class netrunner():
                 dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/radar/' 
 
             url = server + dir_str
-            cmd = 'curl -s -u ' + self.username+':'+self.username+' -n ' + url
+            cmd = 'curl -s -u ' + self.username+':'+self.username+' ' + url
             self.cmd = cmd
             args = cmd.split()
             process = subprocess.Popen(args,
