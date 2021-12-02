@@ -13,19 +13,13 @@ Dual-frequency precipitation Radar PYthon package (DRpy)
 **NOTE: Version 7 is coming!
 
 Hello all, there is a new version of GPM-DPR data in the pipeline see the below messages: 
-----------------
+-
+
 Dear Science User,
 
-As of November 30, 2021, PPS has ceased production of  GPM V06 DPR and 
-Combined products.
+As of November 30, 2021, PPS has ceased production of  GPM V06 DPR and Combined products. Starting on December 6, 2021 we will start GPM V07 processing beginning with Data date Dec 1, 2021 for GPM DPR ONLY. On December 10, 2021 we will start GPM (reprocessing) RP for V07 back to  the beginning of the mission for GPM DPR ONLY. At approximately 10:30 UTC 5 December 2021 until about 00:30 UTC 6 December. The GPM near realtime will be transitioning its software to product V07 radar products.  The V07 radar products have a different format from V06. 
 
-Starting on December 6, 2021 we will start GPM V07 processing beginning 
-with Data date Dec 1, 2021 for GPM DPR ONLY.
-On December 10, 2021 we will start GPM (reprocessing) RP for V07 back to 
-the beginning of the mission for GPM DPR ONLY.
-
-At approximately 10:30 UTC 5 December 2021 until about 00:30 UTC 6 December. The GPM near realtime will be transitioning its software to product V07 radar products.  The V07 radar products have a different format from V06. 
-----------------
+-
 
 With this new version there is some major changes to the file structure. But the codebase here currently does support auto determining what version you have. That being said expect bugs and issues.... 
 
