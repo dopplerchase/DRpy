@@ -113,8 +113,11 @@ class netrunner():
                 t = i.split('S')[1][:14].split('-E')
                 s_times.append(t[0])
                 e_times.append(t[1])
-                date.append(i.split('/radar/DprL2/2A.GPM.DPR.V820180723.')[1].split('-S')[0])
-
+                #this is for the old version RJC 06-Dec-2021
+                #date.append(i.split('/radar/DprL2/2A.GPM.DPR.V820180723.')[1].split('-S')[0])
+                #new version string start RJC 06-Dec-2021
+                date.append(i.split('/radar/DprL2/2A.GPM.DPR.V920211125.')[1].split('-S')[0])
+                
                 res = [i + j for i, j in zip(date, s_times)] 
                 dtimes_s = np.zeros(len(res),dtype='object')
                 res2 = [i + j for i, j in zip(date, e_times)] 
