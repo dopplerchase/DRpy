@@ -14,6 +14,14 @@ def padder(x):
         
     return x 
 
+def find_keys(keys,substring):
+  """keys is a list of strings; substring is a list of substrings"""
+  for sub in substring:
+    res = [i for i in keys if sub in i]
+    keys = deepcopy(res)
+
+  return res
+
 class netrunner():
     """ This class will house all the functions needed to query the GPM FTP"""
     
@@ -53,6 +61,9 @@ class netrunner():
             stderr=subprocess.PIPE)
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
+            #drop old version files, wont be needed in a couple weeks
+            file_list = find_keys(file_list,'2A.GPM.DPR.V920211125')
+            
         elif self.servername=='Research':
             server = 'https://arthurhouhttps.pps.eosdis.nasa.gov/text/'
             year = padder(self.s_time.year)
