@@ -63,7 +63,7 @@ class netrunner():
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
             #drop old version files, wont be needed in a couple weeks
-            file_list = find_keys(file_list,'2A.GPM.DPR.V920211125')
+            file_list = find_keys(file_list,['2A.GPM.DPR.V920211125'])
             
         elif self.servername=='Research':
             server = 'https://arthurhouhttps.pps.eosdis.nasa.gov/text/'
