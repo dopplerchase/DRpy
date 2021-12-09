@@ -4,6 +4,7 @@ import subprocess
 import os
 import numpy as np
 import datetime
+from copy import deepcopy
 
 def padder(x):
     
