@@ -155,10 +155,8 @@ class netrunner():
                 t = i.split('S')[1][:14].split('-E')
                 s_times.append(t[0])
                 e_times.append(t[1])
-                if self.Xradar:
-                    date.append(i.split('2A.GPM.DPRX.V8-20200326.')[1].split('-S')[0])
-                else:
-                    date.append(i.split('2A.GPM.DPR.V8-20180723.')[1].split('-S')[0])
+                #V7 fix 
+                date.append(i.split('2A.GPM.DPR.V9-20211125.')[1].split('-S')[0])
 
                 res = [i + j for i, j in zip(date, s_times)] 
                 dtimes_s = np.zeros(len(res),dtype='object')
