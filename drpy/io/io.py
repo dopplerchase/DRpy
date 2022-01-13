@@ -26,7 +26,7 @@ def find_keys(keys,substring):
 class netrunner():
     """ This class will house all the functions needed to query the GPM FTP"""
     
-    def __init__(self,servername='NearRealTime',username=None,start_time=None,end_time=None,Xradar=False,autorun=True,savedir='./'):
+    def __init__(self,servername='NearRealTime',username=None,start_time=None,end_time=None,autorun=True,savedir='./'):
         self.servername = servername
         if servername=='NearRealTime':
             self.server ='https://jsimpsonhttps.pps.eosdis.nasa.gov/text'
@@ -38,7 +38,6 @@ class netrunner():
             print('Please enter your PPS registered email as the username')
         else:
             self.username=username
-        self.Xradar = Xradar
         
         if autorun:
             #this will grab all the files on your day of interest
@@ -62,7 +61,6 @@ class netrunner():
             stderr=subprocess.PIPE)
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
-            #drop old version files, wont be needed in a couple weeks
             file_list = find_keys(file_list,['2A.GPM.DPR.V920211125'])
             
         elif self.servername=='Research':
@@ -70,11 +68,7 @@ class netrunner():
             year = padder(self.s_time.year)
             month = padder(self.s_time.month)
             day = padder(self.s_time.day)
-            if self.Xradar:
-                dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/Xradar/' 
-            else:
-                dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/radar/' 
-
+            dir_str = 'gpmdata/' + year + '/' + month + '/' + day + '/radar/' 
             url = server + dir_str
             cmd = 'curl -s -u ' + self.username+':'+self.username+' ' + url
             self.cmd = cmd
@@ -84,12 +78,7 @@ class netrunner():
             stderr=subprocess.PIPE)
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
-            
-            #note, won't need this bit for the next version, X products will be gone 
-            if self.Xradar:
-                file_list = [i for i in file_list if '2A.GPM.DPRX.V8' in i]
-            else:
-                file_list = [i for i in file_list if '2A.GPM.DPR.V8' in i]
+            file_list = find_keys(file_list,['2A.GPM.DPR.V9-20211125'])
                 
         self.file_list = file_list 
         
