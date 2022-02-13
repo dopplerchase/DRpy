@@ -1,18 +1,19 @@
-name: drpy
+name: drpy_v2
 channels:
   - conda-forge
 dependencies:
-  - python=3.8.5
+  - python
   - numpy
   - scipy
-  - matplotlib=3.2
+  - matplotlib
   - proplot
   - xarray
   - netcdf4
   - pyyaml
   - pandas
   - pyproj
-  - cartopy=0.18
+  - cartopy
   - pip
   - h5py
   - ipykernel
+  - dask
