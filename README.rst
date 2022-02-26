@@ -4,10 +4,6 @@
 Welcome to DRpy!
 ================================
 
-.. image:: https://raw.githubusercontent.com/dopplerchase/DRpy/master/docs/images/DRpy_logo_V1.pdf
-   :align: center
-   :width: 300
-
 ++++++++++++
 Introduction
 ++++++++++++
