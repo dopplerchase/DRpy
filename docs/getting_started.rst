@@ -103,7 +103,7 @@ If you are interested in the science behind any one variable, see the Algorithm 
 3. Plot GPM-DPR Data
 ++++++++++++++++++++
 
-.. image:: images/drpy_case_example.png
+.. image:: images/DRpy_case_example.png
    :align: center
    :width: 600
 
