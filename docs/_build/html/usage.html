@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Getting Started &mdash; DRpy 0.0.1 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Installation" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html" class="icon icon-home"> DRpy
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#download-data">1. Download Data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#finding-the-time">Finding the time</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#read-gpm-dpr-data">2. Read GPM-DPR Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#plot-gpm-dpr-data">3. Plot GPM-DPR Data</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DRpy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Getting Started</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/usage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="getting-started">
+<h1>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline"></a></h1>
+<p>The main functionality of DRpy has 3 main topics:</p>
+<ol class="arabic simple">
+<li><p>Download GPM-DPR Data</p></li>
+<li><p>Read GPM-DPR</p></li>
+<li><p>Plot GPM-DPR data</p></li>
+</ol>
+<section id="download-data">
+<h2>1. Download Data<a class="headerlink" href="#download-data" title="Permalink to this headline"></a></h2>
+<p>One of the major hurtles to using GPM-DPR data is downloading the data. Before you can do anything you have to go
+sign up to access the data server here: <a class="reference external" href="https://registration.pps.eosdis.nasa.gov/registration/">PPS Registration</a>.
+Signing up is free. The purpose of it is to keep statistics of the people using the data. This is usually used at
+NASA headquarter meetings to show how valuable the GPM-DPR data are and keep the mission funded. So please go sign up.
+You also get helpful emails occasionally about data issues or satellite issues.</p>
+<p>Once you have signed up, you can access the ftps pages through your browser by entering the email you signed up with
+as the username and the password. There are two ftp pages for GPM-DPR data:</p>
+<ol class="arabic simple">
+<li><p>Near real time (~ 1-2 hour delay) <a class="reference external" href="https://jsimpsonhttps.pps.eosdis.nasa.gov/radar/">jsimpsonhttps.pps.eosdis.nasa.gov</a></p></li>
+<li><p>Research (~ 24 hour delay). <a class="reference external" href="https://arthurhouhttps.pps.eosdis.nasa.gov/gpmdata/">arthurhouhttps.pps.eosdis.nasa.gov</a></p></li>
+</ol>
+<p>The purpose of the two servers is to give users both a low latency option with a larger risk of the data errors and a
+day late high-quality research product. Side note, both are named after pioneers for the TRMM (<a class="reference external" href="https://en.wikipedia.org/wiki/Joanne_Simpson">Dr. Joanne Simpson</a>)
+and GPM (<a class="reference external" href="https://gpm.nasa.gov/resources/remembering-dr-arthur-y-hou-1947-2013">Dr. Arthur Hou</a>) missions.</p>
+<p>If you navigate to either of these servers, you will see a bunch of files with filenames that seem intially like incoherent non-sense.
+Thus the first main perk of <code class="docutils literal notranslate"><span class="pre">DRpy</span></code> is the ability to find and download a file based on the time the data were collected.
+In the future, a planned functionality of <code class="docutils literal notranslate"><span class="pre">DRpy</span></code> will be able to go and grab all files that span a time range, but right now it only
+supports 1 file at a time [which is used for case study plots].</p>
+<section id="finding-the-time">
+<h3>Finding the time<a class="headerlink" href="#finding-the-time" title="Permalink to this headline"></a></h3>
+<a class="reference internal image-reference" href="_images/GPMRealTimeMonitor.png"><img alt="_images/GPMRealTimeMonitor.png" class="align-center" src="_images/GPMRealTimeMonitor.png" style="width: 600px;" /></a>
+<p>The quickest method find a time and place of interesting data is to use JAXA’s near-realtime website: <a class="reference external" href="https://sharaku.eorc.jaxa.jp/trmm/RT3/index.html">GPM RealTime Monitor</a>
+This site is amazing and provides a map of the near-surface rain rate from the GPM-DPR retrieval.</p>
+<p>Below is a .gif of me doing just that. Find a place that looks interesting, and turn on the “Observation Time”
+toggle to locate a time and place you want to download.</p>
+<a class="reference internal image-reference" href="_images/findtime.gif"><img alt="_images/findtime.gif" class="align-center" src="_images/findtime.gif" style="width: 600px;" /></a>
+<p>This website has the near-surface rain rate for ALL of the data. So feel free to select a different day. I usually select
+a date from the dropdowns rather than using the prev. next buttons because those can freeze up.</p>
+<p>Now that we have located a time of interest, lets actually use <code class="docutils literal notranslate"><span class="pre">DRpy</span></code>. That brings us to the <code class="docutils literal notranslate"><span class="pre">io</span></code> module of <code class="docutils literal notranslate"><span class="pre">DRpy</span></code>.
+This module is tasked with scraping the text files off of the ftps servers and allowing us to grab the 1 file that matches
+the time we want.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">drpy</span>
+<span class="n">dtime</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="s1">&#39;2022/02/20 00:54:00&#39;</span><span class="p">)</span>
+
+<span class="n">io</span> <span class="o">=</span> <span class="n">drpy</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">netrunner</span><span class="p">(</span><span class="n">servername</span><span class="o">=</span><span class="s1">&#39;Research&#39;</span><span class="p">,</span><span class="n">username</span><span class="o">=</span><span class="s1">&#39;username@email.com&#39;</span><span class="p">,</span><span class="n">start_time</span><span class="o">=</span><span class="n">dtime</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Once you run that code, it will print out the file it is downloading, like this:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">Downloading: https://arthurhouhttps.pps.eosdis.nasa.gov/text/gpmdata/2022/02/20/radar/2A.GPM.DPR.V9-20211125.20220220-S003549-E020820.045337.V07A.HDF5</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="read-gpm-dpr-data">
+<h2>2. Read GPM-DPR Data<a class="headerlink" href="#read-gpm-dpr-data" title="Permalink to this headline"></a></h2>
+<p>Now that you have some DPR files, here is an example of how to load them with <code class="docutils literal notranslate"><span class="pre">DRpy</span></code>. We will use
+the core method of GPMDPR. All you need to supply is the filename/path of the file of interest and it
+will (lazily) load ALL modules of the hdf into an xarray dataset. It stores this data in <code class="docutils literal notranslate"><span class="pre">dpr.ds</span></code></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dpr</span> <span class="o">=</span> <span class="n">drpy</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">GPMDPR</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="n">io</span><span class="o">.</span><span class="n">filename</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">64</span><span class="p">:])</span>
+<span class="n">dpr</span><span class="o">.</span><span class="n">ds</span>
+</pre></div>
+</div>
+<p>if you are using Jupyter to do this, you might see something like this</p>
+<a class="reference internal image-reference" href="_images/dataset_snap.png"><img alt="_images/dataset_snap.png" class="align-center" src="_images/dataset_snap.png" style="width: 600px;" /></a>
+<p>All 96 variables here are from the original hdf file. If you need more information on what each one of the variables are, please
+see the File Specificatiom (<a class="reference external" href="https://www.eorc.jaxa.jp/GPM/doc/product/format/en/03.GPM_DPR_L2_L3_Product_Format_Documentation_V7_E.pdf">Iguchi et al. 2021a</a>).
+I know that this document is quite dense, so the easiest thing is probably to ctrl+f the document and search the variable you are
+curious about. In future versions of the docs, I will have more examples plotting various variables in this file.</p>
+<p>If you are interested in the science behind any one variable, see the Algorithm Theoretical Basis Document (ATBD, <a class="reference external" href="https://www.eorc.jaxa.jp/GPM/doc/algorithm/ATBD_DPR_V07A.pdf">Iguchi et al. 2021b</a>).</p>
+</section>
+<section id="plot-gpm-dpr-data">
+<h2>3. Plot GPM-DPR Data<a class="headerlink" href="#plot-gpm-dpr-data" title="Permalink to this headline"></a></h2>
+<a class="reference internal image-reference" href="_images/drpy_case_example.png"><img alt="_images/drpy_case_example.png" class="align-center" src="_images/drpy_case_example.png" style="width: 600px;" /></a>
+<p>As part of <code class="docutils literal notranslate"><span class="pre">DRpy</span></code> I have made a fun tool that makes case study plots like the one above. To make this graph you
+need to use the graph module called <code class="docutils literal notranslate"><span class="pre">drpy.graph.case_study()</span></code>. The <code class="docutils literal notranslate"><span class="pre">.case_study</span></code> method takes the filename
+and the center lat/lon of the map you want to show on the right. The easiest way is to copy the lat and lon
+values from the same waypoint of the near-real-time site where you got the time. Here is an example</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">center_lat</span> <span class="o">=</span> <span class="o">-</span><span class="mf">17.489</span>
+<span class="n">center_lon</span> <span class="o">=</span> <span class="mf">56.181</span>
+<span class="n">c</span>  <span class="o">=</span> <span class="n">drpy</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">case_study</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="n">io</span><span class="o">.</span><span class="n">filename</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">64</span><span class="p">:],</span><span class="n">center_lat</span><span class="o">=</span><span class="n">center_lat</span><span class="p">,</span><span class="n">center_lon</span><span class="o">=</span><span class="n">center_lon</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Now that the case_study object is made, you can plot it up using the default parameters like this:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The resulting image will look like this:</p>
+<a class="reference internal image-reference" href="_images/DRpy_default.png"><img alt="_images/DRpy_default.png" class="align-center" src="_images/DRpy_default.png" style="width: 600px;" /></a>
+<p>There is added functionality to this case_study method, but this is the getting started docs page. In the future there will be
+additional docs pages to help change the default plot.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Randy Chase.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,4 +1,4 @@
-name: drpy_v2
+name: drpy
 channels:
   - conda-forge
 dependencies:

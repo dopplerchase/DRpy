@@ -1,0 +1,53 @@
+=====
+Usage 
+=====
+
+The main functionality of DRpy has 3 main topics: 
+
+#. Download GPM-DPR Data 
+#. Read GPM-DPR 
+#. Plot GPM-DPR data 
+
+++++++++++++++
+Download Data
+++++++++++++++
+
+One of the major hurtles to using GPM-DPR data is downloading the data. Before you can do anything you have to go 
+sign up to access the data server here: `PPS Registration <https://registration.pps.eosdis.nasa.gov/registration/>`_. 
+Signing up is free. The purpose of it is to keep statistics of the people using the data. This is usually used at 
+NASA headquarter meetings to show how valuable the GPM-DPR data are and keep the mission funded. So please go sign up. 
+You also get helpful emails occasionally about data issues or satellite issues. 
+
+Once you have signed up, you can access the ftps pages through your browser by entering the email you signed up with
+as the username and the password. There are two ftp pages for GPM-DPR data: 
+
+#. Near real time (~ 1-2 hour delay) `jsimpsonhttps.pps.eosdis.nasa.gov <https://jsimpsonhttps.pps.eosdis.nasa.gov/radar/>`_
+#. Research (~ 24 hour delay). `arthurhouhttps.pps.eosdis.nasa.gov <https://arthurhouhttps.pps.eosdis.nasa.gov/gpmdata/>`_
+
+The purpose of the two servers is to give users both a low latency option with a larger risk of the data errors and a 
+day late high-quality research product. Side note, both are named after pioneers for the TRMM (`Dr. Joanne Simpson <https://en.wikipedia.org/wiki/Joanne_Simpson>`_)
+and GPM (`Dr. Arthur Hou <https://gpm.nasa.gov/resources/remembering-dr-arthur-y-hou-1947-2013>`_) missions.
+
+If you navigate to either of these servers, you will see a bunch of files with filenames that seem intially like incoherent non-sense.
+Thus the first main perk of ``DRpy`` is the ability to find and download a file based on the time the data were collected. 
+In the future, a planned functionality of ``DRpy`` will be able to go and grab all files that span a time range, but right now it only 
+supports 1 file at a time [which is used for case study plots]. 
+
+-----------------
+Finding the time 
+-----------------
+
+.. image:: images/GPMRealTimeMonitor.png
+   :align: center
+   :width: 300
+
+The quickest method find a time and place of interesting data is to use JAXA's near-realtime website: `GPM RealTime Monitor <https://sharaku.eorc.jaxa.jp/trmm/RT3/index.html>`_
+This site is amazing and provides a map of the near-surface rain rate from the GPM-DPR retrieval. 
+
+++++++++++++++++++
+Read GPM-DPR Data
+++++++++++++++++++
+
+++++++++++++++++++
+Plot GPM-DPR Data
+++++++++++++++++++
