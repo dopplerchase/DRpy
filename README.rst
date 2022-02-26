@@ -1,16 +1,25 @@
 
 .. -*- mode: rst -*-
-Dual-frequency precipitation Radar PYthon package (DRpy)
-=====================================
-|Tweet|
+================================
+Welcome to DRpy!
+================================
 
-.. |Tweet| image:: https://img.shields.io/twitter/url/http/shields.io.svg?style=social
-    :target: https://twitter.com/dopplerchase
+.. image:: https://raw.githubusercontent.com/dopplerchase/DRpy/blob/master/docs/images/DRpy_logo_V1.pdf
+   :align: center
+   :width: 300
 
-(pronounced dur-pee)
+++++++++++++
+Introduction
+++++++++++++
 
-The reason for creating this package is not to reinvent the wheel (i.e. h5py works just fine), but to allow users to access beneficial functions in xarray. 
+``DRpy`` (pronounced: dur-pee) is a Python package which aims to help users download, process and plot GPM-DPR data.
+This package is made and maintained by me, Randy Chase, so if you have any questions feel free to reach out on twitter (`@dopplerchase <https://twitter.com/DopplerChase>`_). 
+Alternatively, if you notice broken parts of the code, go ahead and open an issue on the `github repo <https://github.com/dopplerchase/DRpy>`_.
 
-To get specific, the datafiles currently supported are the level 2 DPR files (2A.DPR*; Version 7). You can download them from here for free once you have an account: ftp://arthurhou.pps.eosdis.nasa.gov__ 
+**********
+Motivation
+**********
 
-__ ftp://arthurhou.pps.eosdis.nasa.gov 
+GPM-DPR has collected a treasure trove of atmospheric precipitation measurements that can be cumbersome to deal with. As a means to 
+accelerate the use of GPM-DPR data in the community and to give me practice with creating high-quality open-source code, 
+I have created ``DRpy``.
