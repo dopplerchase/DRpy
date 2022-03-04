@@ -38,4 +38,5 @@ I have created ``DRpy``.
 
    installation.rst
    getting_started.rst
+   advanced_plotting.rst
 

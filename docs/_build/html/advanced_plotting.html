@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Plotting &mdash; DRpy 0.0.1 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Getting Started" href="getting_started.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html" class="icon icon-home"> DRpy
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Advanced Plotting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#moving-the-cross-section">Moving the Cross-section</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scan-adjustment-cross-track">Scan Adjustment (Cross-Track)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#length-adjustment-along-track">Length Adjustment (Along Track)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#adjusting-the-cross-section">Adjusting the Cross-section</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#y-limit">Y limit</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#color-limit">Color limit</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#different-variables">Different Variables</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DRpy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Advanced Plotting</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/advanced_plotting.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="advanced-plotting">
+<h1>Advanced Plotting<a class="headerlink" href="#advanced-plotting" title="Permalink to this headline"></a></h1>
+<p>Now that you have the basics of the <code class="docutils literal notranslate"><span class="pre">DRpy</span></code> [if you are not, please see <code class="docutils literal notranslate"><span class="pre">Getting</span> <span class="pre">Started</span></code> on the left panel],
+this page will guide you through using some of the advanced features of the <code class="docutils literal notranslate"><span class="pre">drpy.graph.case_study</span></code> method.
+A lot of these methods will be ‘trial and error’, meaning try a new input to change how the plot looks, and see
+if you like the change.</p>
+<section id="moving-the-cross-section">
+<h2>Moving the Cross-section<a class="headerlink" href="#moving-the-cross-section" title="Permalink to this headline"></a></h2>
+<section id="scan-adjustment-cross-track">
+<h3>Scan Adjustment (Cross-Track)<a class="headerlink" href="#scan-adjustment-cross-track" title="Permalink to this headline"></a></h3>
+<a class="reference internal image-reference" href="_images/DRpy_case_example.png"><img alt="_images/DRpy_case_example.png" class="align-center" src="_images/DRpy_case_example.png" style="width: 600px;" /></a>
+<p>By default,  <code class="docutils literal notranslate"><span class="pre">drpy.graph.case_study</span></code> will show you the <cite>nadir</cite> scan of GPM-DPR which is scan 24 of 49 total.
+While this works well for the image above, alot of the times, the center of the swath is not where you want to
+look. To change this, you will change the <code class="docutils literal notranslate"><span class="pre">scan</span></code> variable in <code class="docutils literal notranslate"><span class="pre">drpy.graph.case_study</span></code> like the following</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">scan</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Below I have a gif of using scan = 12 through scan = 37, which is the ‘inner swath’.</p>
+<a class="reference internal image-reference" href="_images/DRpy_raw_scanchange.gif"><img alt="_images/DRpy_raw_scanchange.gif" class="align-center" src="_images/DRpy_raw_scanchange.gif" style="width: 600px;" /></a>
+<p>Note that depending on if the orbit is ‘descending’ or ‘ascending’ the scan number might increase to the left, or increase to the right.</p>
+</section>
+<section id="length-adjustment-along-track">
+<h3>Length Adjustment (Along Track)<a class="headerlink" href="#length-adjustment-along-track" title="Permalink to this headline"></a></h3>
+<p>In <code class="docutils literal notranslate"><span class="pre">drpy.graph.case_study</span></code>, you can change the location of the cross-section, which is written on the map as
+the ‘Left’ and ‘Right’ marker (L and R). Depending on your feature you are looking at you will want to change these.
+For example, lets look very close to the eye of this tropical cyclone.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">130</span><span class="p">,</span><span class="n">end_index</span><span class="o">=</span><span class="mi">160</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">)</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_LR.png"><img alt="_images/DRpy_raw_LR.png" class="align-center" src="_images/DRpy_raw_LR.png" style="width: 600px;" /></a>
+<p>Now how about we zoom way out, say start at the first index (0 index) and go to the end (-1 index)</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If you use the above code, you will actually get an error. This happens because the Lat,Lon values are actually
+nans, and it screws up the distances on the x-axis of the cross-section.</p>
+<a class="reference internal image-reference" href="_images/DRpy_raw_LR2.png"><img alt="_images/DRpy_raw_LR2.png" class="align-center" src="_images/DRpy_raw_LR2.png" style="width: 600px;" /></a>
+<p>If you get an error that looks like the above picture, try increasing start_index and decreasing end_index</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">)</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_LR3.png"><img alt="_images/DRpy_raw_LR3.png" class="align-center" src="_images/DRpy_raw_LR3.png" style="width: 600px;" /></a>
+<p>Now you have the knowledge to go ahead and play around with the GPM-DPR data!</p>
+</section>
+</section>
+<section id="adjusting-the-cross-section">
+<h2>Adjusting the Cross-section<a class="headerlink" href="#adjusting-the-cross-section" title="Permalink to this headline"></a></h2>
+<p>While the default parameters for the cross-sections work for a number of meteorological examples,
+sometimes you want to ajust the height of the image (y-axis limit). To adjust any parameter, we will use
+the params_new dictionary.</p>
+<section id="y-limit">
+<h3>Y limit<a class="headerlink" href="#y-limit" title="Permalink to this headline"></a></h3>
+<p>Let’s start with making the y-axis go through 15 km instead of 10, you would do the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span><span class="n">params_new</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;y_max&#39;</span><span class="p">:</span><span class="mi">15</span><span class="p">})</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_UPDOWN.png"><img alt="_images/DRpy_raw_UPDOWN.png" class="align-center" src="_images/DRpy_raw_UPDOWN.png" style="width: 600px;" /></a>
+</section>
+<section id="color-limit">
+<h3>Color limit<a class="headerlink" href="#color-limit" title="Permalink to this headline"></a></h3>
+<p>Occasionally, we can see values of reflectivity that are lower than the default color limits (e.g., snow).
+You can adjust these by sending in <code class="docutils literal notranslate"><span class="pre">'z_vmin'</span></code> for the lower color bound and <code class="docutils literal notranslate"><span class="pre">'z_vmax'</span></code> for the upper bound.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span><span class="n">params_new</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;y_max&#39;</span><span class="p">:</span><span class="mi">15</span><span class="p">,</span><span class="s1">&#39;z_vmin&#39;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="s1">&#39;z_vmax&#39;</span><span class="p">:</span><span class="mi">30</span><span class="p">})</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_colorUPDOWN.png"><img alt="_images/DRpy_raw_colorUPDOWN.png" class="align-center" src="_images/DRpy_raw_colorUPDOWN.png" style="width: 600px;" /></a>
+<p>You can do the same to the DFR, by sending in <code class="docutils literal notranslate"><span class="pre">'dfr_vmin'</span></code> and  <code class="docutils literal notranslate"><span class="pre">'dfr_vmax'</span></code></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span><span class="n">params_new</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;y_max&#39;</span><span class="p">:</span><span class="mi">15</span><span class="p">,</span><span class="s1">&#39;z_vmin&#39;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="s1">&#39;z_vmax&#39;</span><span class="p">:</span><span class="mi">30</span><span class="p">,</span><span class="s1">&#39;dfr_vmin&#39;</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="s1">&#39;dfr_vmax&#39;</span><span class="p">:</span><span class="mi">5</span><span class="p">})</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_colorUPDOWN2.png"><img alt="_images/DRpy_raw_colorUPDOWN2.png" class="align-center" src="_images/DRpy_raw_colorUPDOWN2.png" style="width: 600px;" /></a>
+<p>For this example, I hope you can see that the default color limit is probably better.</p>
+</section>
+<section id="different-variables">
+<h3>Different Variables<a class="headerlink" href="#different-variables" title="Permalink to this headline"></a></h3>
+<p>So far we have been looking at the ‘raw’ or ‘measured’ reflectivity at Ku- and Ka- band, as well
+as the Dual-Frequency Ratio (which is the difference between Ku and Ka). But there is a ‘corrected’ product
+which attempts to correct for attenuation. To change the variables that are plotted on the cross-sections
+we will use the params_new dictionary again.</p>
+<p>To control this, you will use the <code class="docutils literal notranslate"><span class="pre">'xsections'</span></code> key word. This keyword is a list of length 3, which holds
+an encoded value to tell <code class="docutils literal notranslate"><span class="pre">DRpy</span></code> which data to plot. The raw fields are coded by even numbers: [0,2,4].</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span><span class="n">params_new</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;xsections&#39;</span><span class="p">:[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">4</span><span class="p">]})</span>
+</pre></div>
+</div>
+<p>(this is the same as the default)</p>
+<a class="reference internal image-reference" href="_images/DRpy_raw_var.png"><img alt="_images/DRpy_raw_var.png" class="align-center" src="_images/DRpy_raw_var.png" style="width: 600px;" /></a>
+<p>Now let’s plot the corrected data, which uses the odd numbers: [1,3,5]</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span><span class="n">params_new</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;xsections&#39;</span><span class="p">:[</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">5</span><span class="p">]})</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_var2.png"><img alt="_images/DRpy_raw_var2.png" class="align-center" src="_images/DRpy_raw_var2.png" style="width: 600px;" /></a>
+<p>!! NOTE NOTE NOTE !! The KaPR_c is the Ka-band reflectivity CALCULATED from the retrieved drop-size distribution. NOT
+the attenuation corrected Ka-band. This is often times why the DFR looks odd. This is not my doing, this is what the
+2A.DPR files provide.</p>
+<p>Speaking of the retrieved drop-size distribution you can plot the retrieved rain rate! (which is nunber 8).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">(</span><span class="n">start_index</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span><span class="n">end_index</span><span class="o">=-</span><span class="mi">25</span><span class="p">,</span><span class="n">scan</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span><span class="n">params_new</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;xsections&#39;</span><span class="p">:[</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">8</span><span class="p">]})</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/DRpy_raw_var3.png"><img alt="_images/DRpy_raw_var3.png" class="align-center" src="_images/DRpy_raw_var3.png" style="width: 600px;" /></a>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="getting_started.html" class="btn btn-neutral float-left" title="Getting Started" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Randy Chase.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
