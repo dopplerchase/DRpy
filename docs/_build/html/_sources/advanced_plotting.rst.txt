@@ -177,3 +177,74 @@ Speaking of the retrieved drop-size distribution you can plot the retrieved rain
 .. image:: images/DRpy_raw_var3.png
    :align: center
    :width: 600
+
+
+++++++++++++++++++++++++++++++++
+An Alternate Snowfall Retrieval 
+++++++++++++++++++++++++++++++++
+
+-----------
+Background 
+-----------
+
+The GPM-DPR default retrieval (the one provided in the 2A.DPR files) for snowfall have some deficiencies 
+(`Casella et al. 2017 <https://www.sciencedirect.com/science/article/pii/S0169809516304677?casa_token=wa6ZPhk57t0AAAAA:q9-OD_DwlV-U5KNIA23IEzexb3CzxKP1Kow1saisNrqacbzfjHkCyVQY1qjcQg5fK1PrhWam>`_ ;
+`Skofronick-Jackson et al. 2019 <https://journals.ametsoc.org/view/journals/apme/58/7/jamc-d-18-0124.1.xml>`_). During 
+my time at graduate school, we (my advisers and I) looked into why the algorithm might be deficient and found that ultimately the assumed
+emperical relationship between precipitation rate (R) and mass weighted mean diameter (Dm) doesnt apply well to 
+snow (`Chase et al. 2020 <https://www.mdpi.com/2073-4433/11/6/619>`_). 
+
+As a potential remedy, we looked into how machine learning could help retrieve snowfall with GPM-DPR. 
+What I was able to show is that a neural network trained using the state-of-the-art snowfall scattering models 
+(e.g., discrete dipole approximation) and measured particle size distributions produced a skillful retrieval, 
+beating an approximation of the 2A.DPR retrieval (`Chase et al. 2021 <https://journals.ametsoc.org/view/journals/apme/60/3/JAMC-D-20-0177.1.xml>`_).
+We have then gone on to compare our new neural network retrieval to CloudSat's snowfall retrieval (2C-SNOWPROFILE)
+on a coincident dataset of colocations between GPM-DPR and CloudSat. In this paper (still in review), we show that
+our neural network retrieval just above the melting layer best matches the 2A.DPR rainfall rate retrieval just below the melting layer.
+This is important because if mass flux is conserved, which can be loosely assumed (`Heymsfield et al. 2018 <https://journals.ametsoc.org/view/journals/apme/57/2/jamc-d-17-0164.1.xml>`_;
+`Mroz et al. 2020 <https://amt.copernicus.org/articles/14/511/2021/>`_), then there is confidence in our snowfall
+algorithm despite having completely different retrievals (i.e., different assumptions)!
+
+Rather than letting this retrieval sit in academia purgatory, I have implemented a way to run it within the ``DRpy``.
+
+----------------------------
+Running Chase et al. (2021) 
+----------------------------
+
+The retrieval takes as inputs the Ku-band reflectivity, the dual-frequency ratio (Ku - Ka) and the temperature. All of these
+variables are available in the 2A.DPR files, and all we need to do is use the ``xsections`` key in the params dictionary again. 
+One note though, you will need to install tensorflow (the CPU version is fine; ``conda install -c conda-forge tensorflow``). 
+
+Let's look at a scan that happened near the coast of Greenland! You do have to point the code to where the github repo is!
+
+.. code-block:: python
+
+   c = drpy.graph.case_study(filename='2A.GPM.DPR.V9-20211125.20220305-S092806-E110038.045545.V07A.HDF5',center_lat=center_lat,center_lon=center_lon,path_to_models='/Path/to/Your/DRpy/drpy/models/')   
+   c.plotter(start_index=25,end_index=-25,scan=24,params_new={'y_max':5,'z_vmin':0,'z_vmax':35})
+
+.. image:: images/DRpy_raw_snow1.png
+   :align: center
+   :width: 600
+
+This example is an interesting snowfall sample with a clear fall streak from 75 to 150 km along track (the large Z at Ku and large DFR). 
+
+
+To run the Chase et al. (2021) retrieval, all we need to do is provide an 9 (Dm liquid retrieval), 10 (Dm solid retrieval) or 11 (R) to the ``xsections`` param. 
+
+.. code-block:: python
+  
+   c.plotter(start_index=25,end_index=-25,scan=24,params_new={'y_max':5,'z_vmin':0,'z_vmax':35,'dm_vmax':2,'r_vmin':-0.5,'r_vmax':1,'xsections':[0,2,11]})
+
+.. image:: images/DRpy_raw_snow4.png
+   :align: center
+   :width: 600
+
+
+For completeness, here is a gif comparing the Chase et al. (2021) retrieval to the 2A.DPR retrieval. 
+
+.. image:: images/DRpy_raw_snow.gif
+   :align: center
+   :width: 600
+
+That's it! Please know that this retrieval does not include rimed particles in its training data. Thus, we are 
+unsure of the performance of the retrieval in convection. 
