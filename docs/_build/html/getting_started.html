@@ -128,6 +128,8 @@ the time we want.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">Downloading: https://arthurhouhttps.pps.eosdis.nasa.gov/text/gpmdata/2022/02/20/radar/2A.GPM.DPR.V9-20211125.20220220-S003549-E020820.045337.V07A.HDF5</span>
 </pre></div>
 </div>
+<p>Note that sometimes the early day files (0000 - 0100) can end up in the previous days folder.
+Right now I do not have it coded to search the previous day’s dir, so please just adjust your date to one day prior for now.</p>
 </section>
 </section>
 <section id="read-gpm-dpr-data">
@@ -160,7 +162,7 @@ values from the same waypoint of the near-real-time site where you got the time.
 </pre></div>
 </div>
 <p>Now that the case_study object is made, you can plot it up using the default parameters like this:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter</span><span class="p">()</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">c</span><span class="o">.</span><span class="n">plotter_along</span><span class="p">()</span>
 </pre></div>
 </div>
 <p>The resulting image will look like this:</p>
