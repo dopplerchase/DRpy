@@ -72,6 +72,9 @@ Once you run that code, it will print out the file it is downloading, like this:
 
    Downloading: https://arthurhouhttps.pps.eosdis.nasa.gov/text/gpmdata/2022/02/20/radar/2A.GPM.DPR.V9-20211125.20220220-S003549-E020820.045337.V07A.HDF5
 
+Note that sometimes the early day files (0000 - 0100) can end up in the previous days folder. 
+Right now I do not have it coded to search the previous day's dir, so please just adjust your date to one day prior for now.
+
 +++++++++++++++++++++
 2. Read GPM-DPR Data
 +++++++++++++++++++++
@@ -123,7 +126,7 @@ Now that the case_study object is made, you can plot it up using the default par
 
 .. code-block:: python
 
-   c.plotter()
+   c.plotter_along()
 
 
 The resulting image will look like this: 
