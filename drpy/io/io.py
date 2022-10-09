@@ -26,7 +26,8 @@ def find_keys(keys,substring):
 class netrunner():
     """ This class will house all the functions needed to query the GPM FTP"""
     
-    def __init__(self,servername='NearRealTime',username=None,start_time=None,end_time=None,autorun=True,savedir='./'):
+    def __init__(self,servername='NearRealTime',username=None,start_time=None,end_time=None,
+                    autorun=True,savedir='./',verbose=True):
         self.servername = servername
         if servername=='NearRealTime':
             self.server ='https://jsimpsonhttps.pps.eosdis.nasa.gov/text'
@@ -34,11 +35,20 @@ class netrunner():
             self.server = 'https://arthurhouhttps.pps.eosdis.nasa.gov/text'
         self.s_time = start_time
         self.e_time = end_time
+        self.verbose = verbose 
+
+        #check username input 
         if username is None:
             print('Please enter your PPS registered email as the username')
         else:
             self.username=username
         
+        #check dates, multi-day not supported 
+        if self.e_time is not None:
+            if self.s_time.day != self.e_time.day:
+                print('More than one day given as input!')
+                print('Multi-day downloads are not currently supported')
+
         if autorun:
             #this will grab all the files on your day of interest
             self.get_file_list()
@@ -87,8 +97,13 @@ class netrunner():
         """ Some bit of code modified from here: 
         https://gpm.nasa.gov/sites/default/files/document_files/PPS-jsimpsonhttps_retrieval.pdf
         """
+
+        #Note from dev.: this function is not used... RJC 10/09/22
         url = server + filename
-        print('Downloading: {}'.format(url))
+
+        if self.verbose:
+            print('Downloading: {}'.format(url))
+
         cmd = 'curl -s -u ' + username+':'+username+' ' + url + ' -o ' + \
         os.path.basename(filename)
         args = cmd.split()
@@ -96,7 +111,9 @@ class netrunner():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE)
         process.wait()
-        print('Done')
+
+        if self.verbose:
+            print('Done')
 
     def locate_file(self):
         """ 
@@ -180,22 +197,48 @@ class netrunner():
                 ind_b = np.intersect1d(ind_l,ind_r)
                 self.filename = self.file_list[ind_b]
             else:
-                ind_l = np.where(dtimes_s >= self.s_time)
-                ind_r = np.where(dtimes_e <= self.e_time)
+                ind_l = np.where(dtimes_e >= self.s_time)
+                ind_r = np.where(dtimes_s <= self.e_time)
                 ind_b = np.intersect1d(ind_l,ind_r)
                 self.filename = self.file_list[ind_b]
 
     def download(self,savedir='./'):
-        if len(self.filename) > 1:
-            print('Ope: Multiple file downloads not currently supported. Sorry.')
-        else:
-            url = self.server + self.filename[0]
-            print('Downloading: {}'.format(url))
-            cmd = 'curl -s -u ' + self.username+':'+self.username+' ' + url + ' -o ' + \
-            os.path.basename(savedir+self.filename[0])
+        for i,file in enumerate(self.filename):
+            url = self.server + file
+            if self.verbose:
+                print('Downloading {} of {}: {}'.format(i,len(self.filename),url))
+
+            cmd = 'curl -u ' + self.username+':'+self.username+' ' + url + ' -o ' + \
+            os.path.basename(savedir+file)
             args = cmd.split()
             process = subprocess.Popen(args,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-            process.wait()
+            stderr=subprocess.PIPE,
+            shell=False,
+            universal_newlines=True)
+
+            # outs, errs = process.communicate()
+            # print(outs,errs)
+            # process.wait()
+            if self.verbose:
+                it = -1 
+                while True:
+
+                    output = process.stderr.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    if output:
+                        if it == -1:
+                            #need to print header 
+                            print(output.strip())
+                            it = 0
+                        else:
+                            print(output.strip(),end=' \r',)
+
+                rc = process.poll()
+            else:
+                process.wait()
+        
+
+        if self.verbose:
             print('Done')
