@@ -206,7 +206,7 @@ class netrunner():
         for i,file in enumerate(self.filename):
             url = self.server + file
             if self.verbose:
-                print('Downloading {} of {}: {}'.format(i,len(self.filename),url))
+                print('Downloading {} of {}: {}'.format(i+1,len(self.filename),url))
 
             cmd = 'curl -u ' + self.username+':'+self.username+' ' + url + ' -o ' + \
             os.path.basename(savedir+file)
