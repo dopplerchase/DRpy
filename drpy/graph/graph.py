@@ -104,6 +104,9 @@ class case_study:
 
     fig.set_facecolor('w')
 
+    #pass axes to class for adding points 
+    self.axes = axs
+
     #do things to map subplot 
     ax = axs[3]
     ax.format(borderscolor='k',gridminor=True,
@@ -130,15 +133,16 @@ class case_study:
     ax.plot(self.dpr.ds.Longitude[:,-1]-0.0485,self.dpr.ds.Latitude[:,-1],'--k')
 
     #plot data on map 
-    pm = ax.scatter(self.dpr.ds.Longitude[:,:],self.dpr.ds.Latitude[:,:],c=self.dpr.ds.zFactorFinalNearSurface[:,:,0],vmin=params['z_vmin'],vmax=params['z_vmax'],s=1,cmap='Spectral_r',linewidths=0.1,zorder=10)
+    pm = ax.scatter(self.dpr.ds.Longitude[:,:],self.dpr.ds.Latitude[:,:],c=self.dpr.ds.zFactorFinalNearSurface[:,:,0],vmin=params['z_vmin'],vmax=params['z_vmax'],s=1,cmap=cmaps.ChaseSpectral,linewidths=0.1,zorder=10)
     s = start_index
     e = end_index
     w = scan
 
     #plot the along_track choice
+    ax.plot(self.dpr.ds.Longitude[s:e,w],self.dpr.ds.Latitude[s:e,w],'-w',markerfacecolor='w',ms=10,zorder=12,lw=3)
     ax.plot(self.dpr.ds.Longitude[s:e,w],self.dpr.ds.Latitude[s:e,w],'-k',markerfacecolor='w',ms=10,zorder=12)
-    ax.plot(self.dpr.ds.Longitude[s,w],self.dpr.ds.Latitude[s,w],'k',markerfacecolor='w',ms=10,label='Start',marker='$L$',markeredgewidth=1,zorder=12)
-    ax.plot(self.dpr.ds.Longitude[e,w],self.dpr.ds.Latitude[e,w],'k',markerfacecolor='w',ms=10,label='End',marker='$R$',markeredgewidth=1,zorder=12)
+    ax.plot(self.dpr.ds.Longitude[s,w],self.dpr.ds.Latitude[s,w],'w',markerfacecolor='k',ms=10,label='Start',marker='$L$',markeredgewidth=1,zorder=12)
+    ax.plot(self.dpr.ds.Longitude[e,w],self.dpr.ds.Latitude[e,w],'w',markerfacecolor='k',ms=10,label='End',marker='$R$',markeredgewidth=1,zorder=12)
 
     #add coastlines 
     ax.add_feature(cartopy.feature.COASTLINE.with_scale('50m'),color='k',zorder=11)
@@ -158,7 +162,9 @@ class case_study:
 
     #draw colorbars in better spot (above map)
     ax_cbar1 = fig.add_axes([0.6, 0.93, 0.33, 0.015])
+    ax_cbar1.set_facecolor('w')
     ax_cbar2 = fig.add_axes([0.6, 0.85, 0.33, 0.015])
+    ax_cbar2.set_facecolor('w')
     cbar1=True
     cbar2=True
     zfilled=True
@@ -178,7 +184,7 @@ class case_study:
             #add Z colorbar 
             text = ax_cbar.text(-0.25,0,'$Z_{e}$, [$dBZ$]',fontsize=10,transform=ax_cbar.transAxes)
             text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
-            cb1 = make_colorbar(ax_cbar,params['z_vmin'],params['z_vmax'],plt.cm.Spectral_r)
+            cb1 = make_colorbar(ax_cbar,params['z_vmin'],params['z_vmax'],cmaps.ChaseSpectral)
             zfilled=False
         elif ((xsection_i==4) or (xsection_i==5)) and (cbar1 or cbar2) and (dfrfilled):
             if cbar1:
@@ -225,7 +231,12 @@ class case_study:
             cb2 = make_colorbar(ax_cbar,params['r_vmin'],params['r_vmax'],cmaps.plasma)
             rfilled=False
 
-
+    #if cbar is not used, turn axis off
+    if cbar1:
+        ax_cbar1.axis('off')
+    if cbar2:
+        ax_cbar2.axis('off')
+    
     #get distances to plot cross-section 
     self.dpr.get_physcial_distance(reference_point=[self.dpr.ds.Longitude.values[s,w],self.dpr.ds.Latitude.values[s,w]])
 
@@ -292,8 +303,10 @@ class case_study:
     [3,3,3,0,0,0,0]]
 
     fig, axs = plot.subplots(array, width=10,height=5,span=False,proj=['cart', 'cart', 'cart','cyl',],tight=False)
-
     fig.set_facecolor('w')
+
+    #pass axes to class for adding points 
+    self.axes = axs
 
     #do things to map subplot 
     ax = axs[3]
@@ -321,13 +334,14 @@ class case_study:
     ax.plot(self.dpr.ds.Longitude[:,-1]-0.0485,self.dpr.ds.Latitude[:,-1],'--k')
 
     #plot data on map 
-    pm = ax.scatter(self.dpr.ds.Longitude[:,:],self.dpr.ds.Latitude[:,:],c=self.dpr.ds.zFactorFinalNearSurface[:,:,0],vmin=params['z_vmin'],vmax=params['z_vmax'],s=1,cmap='Spectral_r',linewidths=0.1,zorder=10)
+    pm = ax.scatter(self.dpr.ds.Longitude[:,:],self.dpr.ds.Latitude[:,:],c=self.dpr.ds.zFactorFinalNearSurface[:,:,0],vmin=params['z_vmin'],vmax=params['z_vmax'],s=1,cmap=cmaps.ChaseSpectral,linewidths=0.1,zorder=10)
     a = along_track_index
 
     #plot the along_track choice
+    ax.plot(self.dpr.ds.Longitude[a,:],self.dpr.ds.Latitude[a,:],'-w',markerfacecolor='w',ms=10,zorder=12,lw=3)
     ax.plot(self.dpr.ds.Longitude[a,:],self.dpr.ds.Latitude[a,:],'-k',markerfacecolor='w',ms=10,zorder=12)
-    ax.plot(self.dpr.ds.Longitude[a,0],self.dpr.ds.Latitude[a,0],'k',markerfacecolor='w',ms=10,label='Start',marker='$L$',markeredgewidth=1,zorder=12)
-    ax.plot(self.dpr.ds.Longitude[a,-1],self.dpr.ds.Latitude[a,-1],'k',markerfacecolor='w',ms=10,label='End',marker='$R$',markeredgewidth=1,zorder=12)
+    ax.plot(self.dpr.ds.Longitude[a,0],self.dpr.ds.Latitude[a,0],'w',markerfacecolor='k',ms=10,label='Start',marker='$L$',markeredgewidth=1,zorder=12)
+    ax.plot(self.dpr.ds.Longitude[a,-1],self.dpr.ds.Latitude[a,-1],'w',markerfacecolor='k',ms=10,label='End',marker='$R$',markeredgewidth=1,zorder=12)
 
     #add coastlines 
     ax.add_feature(cartopy.feature.COASTLINE.with_scale('50m'),color='k',zorder=11)
@@ -347,7 +361,9 @@ class case_study:
 
     #draw colorbars in better spot (above map)
     ax_cbar1 = fig.add_axes([0.6, 0.93, 0.33, 0.015])
+    ax_cbar1.set_facecolor('w')
     ax_cbar2 = fig.add_axes([0.6, 0.85, 0.33, 0.015])
+    ax_cbar2.set_facecolor('w')
     cbar1=True
     cbar2=True
     zfilled=True
@@ -367,7 +383,7 @@ class case_study:
             #add Z colorbar 
             text = ax_cbar.text(-0.25,0,'$Z_{e}$, [$dBZ$]',fontsize=10,transform=ax_cbar.transAxes)
             text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="w")])
-            cb1 = make_colorbar(ax_cbar,params['z_vmin'],params['z_vmax'],plt.cm.Spectral_r)
+            cb1 = make_colorbar(ax_cbar,params['z_vmin'],params['z_vmax'],cmaps.ChaseSpectral)
             zfilled=False
         elif ((xsection_i==4) or (xsection_i==5)) and (cbar1 or cbar2) and (dfrfilled):
             if cbar1:
@@ -414,6 +430,11 @@ class case_study:
             cb2 = make_colorbar(ax_cbar,params['r_vmin'],params['r_vmax'],cmaps.plasma)
             rfilled=False
 
+    #if cbar is not used, turn axis off
+    if cbar1:
+        ax_cbar1.axis('off')
+    if cbar2:
+        ax_cbar2.axis('off')
 
     #get distances to plot cross-section 
     self.dpr.get_physcial_distance(reference_point=[self.dpr.ds.Longitude.values[a,0],self.dpr.ds.Latitude.values[a,0]])
@@ -448,28 +469,28 @@ def cross_section_method(self,choice,s,e,w,ax,params):
     from drpy.graph import cmaps
     if choice ==0:
         x = self.dpr.ds.zFactorMeasured[:,:,:,0].where(self.dpr.ds.zFactorMeasured[:,:,:,0] >= 10)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
         label = 'KuPR'
     elif choice==1:
         x = self.dpr.ds.zFactorFinal[:,:,:,0].where(self.dpr.ds.zFactorFinal[:,:,:,0] >= 10)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
         label = 'KuPR_c'
     elif choice==2:
         x = self.dpr.ds.zFactorMeasured[:,:,:,1].where(self.dpr.ds.zFactorMeasured[:,:,:,1] >= 15)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
         label = 'KaPR'
     elif choice==3:
         x = self.dpr.ds.zFactorFinal[:,:,:,1].where(self.dpr.ds.zFactorFinal[:,:,:,1] >= 15)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
@@ -546,28 +567,28 @@ def cross_section_method2(self,choice,along_track_index,ax,params):
     from drpy.graph import cmaps
     if choice ==0:
         x = self.dpr.ds.zFactorMeasured[:,:,:,0].where(self.dpr.ds.zFactorMeasured[:,:,:,0] >= 10)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
         label = 'KuPR'
     elif choice==1:
         x = self.dpr.ds.zFactorFinal[:,:,:,0].where(self.dpr.ds.zFactorFinal[:,:,:,0] >= 10)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
         label = 'KuPR_c'
     elif choice==2:
         x = self.dpr.ds.zFactorMeasured[:,:,:,1].where(self.dpr.ds.zFactorMeasured[:,:,:,1] >= 15)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
         label = 'KaPR'
     elif choice==3:
         x = self.dpr.ds.zFactorFinal[:,:,:,1].where(self.dpr.ds.zFactorFinal[:,:,:,1] >= 15)
-        cmap = 'Spectral_r'
+        cmap = cmaps.ChaseSpectral
         levels=np.linspace(params['z_vmin'], params['z_vmax'], 50)
         vmin = params['z_vmin']
         vmax = params['z_vmax']
