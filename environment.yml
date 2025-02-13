@@ -1,8 +1,9 @@
 name: drpy
 channels:
   - conda-forge
+  - nodefaults
 dependencies:
-  - python
+  - python=3.10  # Adjust based on your needs
   - numpy
   - scipy
   - matplotlib
