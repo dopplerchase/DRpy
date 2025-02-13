@@ -17,7 +17,7 @@ cd into the DRpy director
 
     $ cd ./DRpy
 
-use conda to make the new enviroment and install the dependances 
+use conda (or mamba) to make the new enviroment and install the dependances 
 
 .. code-block:: bash
 
@@ -28,3 +28,9 @@ finally, install the package
 .. code-block:: bash
 
     $ pip install . 
+
+If you need to install this new kernel into you base jupyter:
+
+.. code-block:: bash
+
+    python -m ipykernel install --user --name drpy --display-name "drpy"
