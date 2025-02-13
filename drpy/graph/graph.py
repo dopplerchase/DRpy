@@ -133,7 +133,7 @@ class case_study:
     ax.plot(self.dpr.ds.Longitude[:,-1]-0.0485,self.dpr.ds.Latitude[:,-1],'--k')
 
     #plot data on map 
-    pm = ax.scatter(self.dpr.ds.Longitude[:,:],self.dpr.ds.Latitude[:,:],c=self.dpr.ds.zFactorFinalNearSurface[:,:,0],vmin=params['z_vmin'],vmax=params['z_vmax'],s=1,cmap=cmaps.ChaseSpectral,linewidths=0.1,zorder=10)
+    pm = ax.scatter(self.dpr.ds.Longitude[:,:],self.dpr.ds.Latitude[:,:],c=self.dpr.ds.zFactorFinalNearSurface[:,:,0],vmin=params['z_vmin'],vmax=params['z_vmax'],s=0.8,cmap=cmaps.ChaseSpectral,linewidths=0.1,zorder=10)
     s = start_index
     e = end_index
     w = scan
@@ -141,8 +141,8 @@ class case_study:
     #plot the along_track choice
     ax.plot(self.dpr.ds.Longitude[s:e,w],self.dpr.ds.Latitude[s:e,w],'-w',markerfacecolor='w',ms=10,zorder=12,lw=3)
     ax.plot(self.dpr.ds.Longitude[s:e,w],self.dpr.ds.Latitude[s:e,w],'-k',markerfacecolor='w',ms=10,zorder=12)
-    ax.plot(self.dpr.ds.Longitude[s,w],self.dpr.ds.Latitude[s,w],'w',markerfacecolor='k',ms=10,label='Start',marker='$L$',markeredgewidth=1,zorder=12)
-    ax.plot(self.dpr.ds.Longitude[e,w],self.dpr.ds.Latitude[e,w],'w',markerfacecolor='k',ms=10,label='End',marker='$R$',markeredgewidth=1,zorder=12)
+    ax.plot(self.dpr.ds.Longitude[s,w],self.dpr.ds.Latitude[s,w],'w',markerfacecolor='k',ms=10,label='Start',marker=r'$\mathbf{L}$',markeredgewidth=0.9,zorder=12)
+    ax.plot(self.dpr.ds.Longitude[e,w],self.dpr.ds.Latitude[e,w],'w',markerfacecolor='k',ms=10,label='End',marker=r'$\mathbf{R}$',markeredgewidth=0.9,zorder=12)
 
     #add coastlines 
     ax.add_feature(cartopy.feature.COASTLINE.with_scale('50m'),color='k',zorder=11)
