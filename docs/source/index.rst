@@ -17,7 +17,7 @@ Introduction
 
 .. note::
 
-   This project is under active development. Last edit made on 06 Aug 2022 by RJC
+   This project is under active development. Last edit made on 13 Feb 2025 by RJC
 
 
 ``DRpy`` (pronounced: dur-pee) is a Python package which aims to help users download, process and plot GPM-DPR data.
