@@ -71,7 +71,7 @@ class netrunner():
             stderr=subprocess.PIPE)
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
-            file_list = find_keys(file_list,['2A.GPM.DPR.V920211125'])
+            file_list = find_keys(file_list,['2A.GPM.DPR.V920240130'])
             
         elif self.servername=='Research':
             server = 'https://arthurhouhttps.pps.eosdis.nasa.gov/text/'
@@ -88,7 +88,7 @@ class netrunner():
             stderr=subprocess.PIPE)
             stdout = process.communicate()[0].decode()
             file_list = stdout.split()
-            file_list = find_keys(file_list,['2A.GPM.DPR.V9-20211125'])
+            file_list = find_keys(file_list,['2A.GPM.DPR.V9-20240130'])
                 
         self.file_list = file_list 
         
@@ -133,8 +133,10 @@ class netrunner():
                 e_times.append(t[1])
                 #this is for the old version RJC 06-Dec-2021
                 #date.append(i.split('/radar/DprL2/2A.GPM.DPR.V820180723.')[1].split('-S')[0])
-                #new version string start RJC 06-Dec-2021
-                date.append(i.split('/radar/DprL2/2A.GPM.DPR.V920211125.')[1].split('-S')[0])
+                #this is for the old version RJC 06-Dec-2024
+                # date.append(i.split('/radar/DprL2/2A.GPM.DPR.V920211125.')[1].split('-S')[0])
+                #new version string start RJC 
+                date.append(i.split('/radar/DprL2/2A.GPM.DPR.V920240130.')[1].split('-S')[0])
                 
                 res = [i + j for i, j in zip(date, s_times)] 
                 dtimes_s = np.zeros(len(res),dtype='object')
@@ -172,8 +174,8 @@ class netrunner():
                 t = i.split('S')[1][:14].split('-E')
                 s_times.append(t[0])
                 e_times.append(t[1])
-                #V7 fix 
-                date.append(i.split('2A.GPM.DPR.V9-20211125.')[1].split('-S')[0])
+                #2025 V9 fix 
+                date.append(i.split('2A.GPM.DPR.V9-20240130.')[1].split('-S')[0])
 
                 res = [i + j for i, j in zip(date, s_times)] 
                 dtimes_s = np.zeros(len(res),dtype='object')
