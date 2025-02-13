@@ -3,7 +3,7 @@ Installation
 ============
 
 The easiest way to install DRpy is to install it within a new anaconda environment. If you don't already have conda, please
-see go install it from here: `miniconda <https://docs.conda.io/en/latest/miniconda.html>`_
+see go install it from here: `miniforge <https://github.com/conda-forge/miniforge>`_
 
 Now that you have conda, either download the zipped file from github, or use the following (if you have git)
 
