@@ -7,7 +7,7 @@
 Welcome to DRpy's documentation!
 ================================
 
-.. image:: images/DRpy_logo_V1.pdf
+.. image:: images/DRpy_logo_V1.png
    :align: center
    :width: 300
 
