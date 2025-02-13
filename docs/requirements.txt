@@ -1,0 +1,6 @@
+# Example requirements.txt
+
+# Your other dependencies
+sphinx_rtd_theme
+
+# Additional dependencies
