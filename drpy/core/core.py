@@ -82,6 +82,8 @@ class GPMDPR():
             csf = xr.open_dataset(self.filename,group=prefix+'CSF',engine='netcdf4',decode_cf=False)
             exp = xr.open_dataset(self.filename,group=prefix+'Experimental',engine='netcdf4',decode_cf=False)
             flg = xr.open_dataset(self.filename,group=prefix+'FLG',engine='netcdf4',decode_cf=False)
+            trg = xr.open_dataset(self.filename,group=prefix+'TRG',engine='netcdf4',decode_cf=False)
+
             #rename dims to proper names
             bad_dims = list(ver.dims)
             ver = ver.rename_dims({bad_dims[0]:'nscan',
@@ -111,8 +113,13 @@ class GPMDPR():
                                 bad_dims[2]:'nbin',
                                 bad_dims[3]:'nfreq'})       
 
+            bad_dims = list(trg.dims)
+            trg = trg.rename_dims({bad_dims[0]:'nscan',
+                                bad_dims[1]:'nrayNS',
+                                bad_dims[2]:'nslope',})     
+
             #MERGE into one ds 
-            self.ds = xr.merge([geo,pre,slv,ver,srt,csf,exp,flg,tim])
+            self.ds = xr.merge([geo,pre,slv,ver,srt,csf,exp,flg,tim,trg])
         else:
             #MERGE into one ds 
             self.ds = xr.merge([geo,pre,slv,tim])
