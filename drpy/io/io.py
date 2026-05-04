@@ -15,10 +15,11 @@ NRT_DPR_L2_BASE_URL = 'https://jsimpsonhttps.pps.eosdis.nasa.gov/radar/DprL2/'
 # https://jsimpsonhttps.pps.eosdis.nasa.gov/documentation/nrtInstructions.pdf
 # Public overview: https://gpm.nasa.gov/data/sources/pps-nrt
 #
+# Research: ...V9-20211125.YYYYMMDD-S...-E....032332.V07A.HDF5
 # Research: ...V10-20260310.YYYYMMDD-S...-E....068975.V08A.nc
 # NRT:      ...V1020260310.YYYYMMDD-S...-E....V08A.RT-NC  (optional orbit segment before .VxxA)
 _DPR_FILENAME_RE = re.compile(
-    r'2A\.GPM\.DPR\.V10[^.]*\.(?P<date>\d{8})-S(?P<start>\d{6})-E(?P<end>\d{6})'
+    r'2A\.GPM\.DPR\.V\d+[^.]*\.(?P<date>\d{8})-S(?P<start>\d{6})-E(?P<end>\d{6})'
     r'(?:\.\d+)?\.[^.]+\.(?P<ext>HDF5|RT-H5|RT-NC|nc)$',
     re.IGNORECASE
 )
