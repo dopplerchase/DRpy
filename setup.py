@@ -14,5 +14,5 @@ setup(name='DRpy',
       packages=['drpy','drpy.core','drpy.graph','drpy.util','drpy.io'],
       long_description = long_description,
       license = 'MIT',
-      requires = ['h5py', 'xarray']
+      requires = ['h5py', 'xarray', 'h5netcdf']
      )

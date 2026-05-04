@@ -8,6 +8,93 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+_HDF5_MAGIC = (b'\x89HDF\r\n\x1a\n', b'\x89HDF\n\r\x1a\n')
+
+
+def _diagnose_product_file_header(path):
+    """Return a short human-readable hint about file type (for bad downloads or corrupt files)."""
+    try:
+        size = os.path.getsize(path)
+    except OSError as exc:
+        return 'cannot stat file ({})'.format(exc)
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(512)
+    except OSError as exc:
+        return 'cannot read file ({})'.format(exc)
+    if size == 0:
+        return 'file is empty'
+    if size < 4096:
+        return 'file is only {} bytes (likely failed HTTP response, not a granule)'.format(size)
+    if head.lstrip().startswith(b'<!DOCTYPE') or head.lstrip().startswith(b'<html'):
+        return 'content begins with HTML (often login or error page saved as data)'
+    if head.startswith(_HDF5_MAGIC):
+        return 'HDF5 signature present; if open still fails, try updating h5py/h5netcdf or check group path'
+    return 'first 8 bytes (hex)={!r} (expected HDF5 for .RT-NC / .RT-H5 NRT products)'.format(
+        head[:8].hex()
+    )
+
+
+def _open_dpr_subgroup(filename, group):
+    """
+    Open one ``/FS/...`` subgroup from a GPM-DPR file.
+
+    Research products are often CF-NetCDF (``.nc``). NRT uses HDF5 containers named
+    ``.RT-H5`` / ``.HDF5`` and sometimes ``.RT-NC`` (still HDF5; ``netcdf4`` often errors
+    with "Unknown file format"). ``.nc`` uses ``netcdf4``; HDF-style suffixes try
+    ``h5netcdf`` first or after ``netcdf4`` as appropriate.
+    """
+    name = os.path.basename(filename).lower()
+    if name.endswith('.nc'):
+        engines = ('netcdf4',)
+    elif name.endswith('.rt-nc'):
+        # PPS uses ".RT-NC" on NRT; files are HDF5, not NetCDF — netcdf4 raises "Unknown file format".
+        try:
+            import h5netcdf  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                'GPM NRT ".RT-NC" files are HDF5. Install h5netcdf to read them '
+                '(e.g. pip install h5netcdf or conda install h5netcdf).'
+            ) from exc
+        engines = ('h5netcdf',)
+    elif name.endswith(('.hdf5', '.hdf', '.h5')) or name.endswith('.rt-h5'):
+        engines = ('netcdf4', 'h5netcdf')
+    else:
+        engines = ('netcdf4', 'h5netcdf')
+    last_exc = None
+    for engine in engines:
+        try:
+            return xr.open_dataset(filename, group=group, engine=engine, decode_cf=False)
+        except Exception as exc:
+            last_exc = exc
+    hint = _diagnose_product_file_header(filename)
+    raise OSError(
+        'Could not open {!r} group={!r} with engines={}. {}\n'
+        'NRT access and filenames are described in '
+        'https://jsimpsonhttps.pps.eosdis.nasa.gov/documentation/nrtInstructions.pdf '
+        '(PDF requires PPS login in a browser).'
+        .format(filename, group, engines, hint)
+    ) from last_exc
+
+
+def _rename_dims_if_needed(ds, target_dims):
+    """
+    Rename dataset dimensions to target names only when required.
+    This avoids xarray errors when newer files already use canonical names.
+    """
+    rename_map = {}
+    current_dims = list(ds.dims)
+    for idx, target in enumerate(target_dims):
+        if idx >= len(current_dims):
+            break
+        current = current_dims[idx]
+        if current != target and target not in ds.dims:
+            rename_map[current] = target
+    if rename_map:
+        ds = ds.rename_dims(rename_map)
+    return ds
+
+
 class GPMDPR():
 
     """
@@ -38,7 +125,12 @@ class GPMDPR():
             self.read()
             #this gets a datetime obj for each scan 
             self.parse_dtime()
-        
+
+    @property
+    def xrds(self):
+        """Backward-compatible alias for the merged xarray Dataset (same object as ``ds``)."""
+        return self.ds
+
     def read(self):
         """
         This method unfolds all the groups into one combined xarray dataset for
@@ -52,71 +144,33 @@ class GPMDPR():
         #######################################################################
 
         prefix = '/FS/'
-        geo = xr.open_dataset(self.filename,group=prefix,engine='netcdf4',decode_cf=False)
-        pre = xr.open_dataset(self.filename,group=prefix+'PRE',engine='netcdf4',decode_cf=False)
-        slv = xr.open_dataset(self.filename,group=prefix+'SLV',engine='netcdf4',decode_cf=False)
-        tim = xr.open_dataset(self.filename,group=prefix+'ScanTime',engine='netcdf4',decode_cf=False)
+        geo = _open_dpr_subgroup(self.filename, prefix)
+        pre = _open_dpr_subgroup(self.filename, prefix + 'PRE')
+        slv = _open_dpr_subgroup(self.filename, prefix + 'SLV')
+        tim = _open_dpr_subgroup(self.filename, prefix + 'ScanTime')
 
         #rename dims to proper names
-        bad_dims = list(geo.dims)
-        geo = geo.rename_dims({bad_dims[0]:'nscan',
-                            bad_dims[1]:'nrayNS'})
-        bad_dims = list(pre.dims)
-        pre = pre.rename_dims({bad_dims[0]:'nscan',
-                            bad_dims[1]:'nrayNS',
-                            bad_dims[2]:'nfreq',
-                            bad_dims[3]:'nbin'})
-        bad_dims = list(slv.dims)
-        slv = slv.rename_dims({bad_dims[0]:'nscan',
-                            bad_dims[1]:'nrayNS',
-                            bad_dims[2]:'nbin',
-                            bad_dims[3]:'nfreq',
-                            bad_dims[4]:'nNUBF'})
-        bad_dims = list(tim.dims)
-        tim = tim.rename_dims({bad_dims[0]:'nscan'})
+        geo = _rename_dims_if_needed(geo, ['nscan', 'nrayNS'])
+        pre = _rename_dims_if_needed(pre, ['nscan', 'nrayNS', 'nfreq', 'nbin'])
+        slv = _rename_dims_if_needed(slv, ['nscan', 'nrayNS', 'nbin', 'nfreq', 'nNUBF'])
+        tim = _rename_dims_if_needed(tim, ['nscan'])
         
         #if you want to load the whole thing in, turn the heavy flag on 
         if self.heavy: 
-            ver = xr.open_dataset(self.filename,group=prefix+'VER',engine='netcdf4',decode_cf=False)
-            srt = xr.open_dataset(self.filename,group=prefix+'SRT',engine='netcdf4',decode_cf=False)
-            csf = xr.open_dataset(self.filename,group=prefix+'CSF',engine='netcdf4',decode_cf=False)
-            exp = xr.open_dataset(self.filename,group=prefix+'Experimental',engine='netcdf4',decode_cf=False)
-            flg = xr.open_dataset(self.filename,group=prefix+'FLG',engine='netcdf4',decode_cf=False)
-            trg = xr.open_dataset(self.filename,group=prefix+'TRG',engine='netcdf4',decode_cf=False)
+            ver = _open_dpr_subgroup(self.filename, prefix + 'VER')
+            srt = _open_dpr_subgroup(self.filename, prefix + 'SRT')
+            csf = _open_dpr_subgroup(self.filename, prefix + 'CSF')
+            exp = _open_dpr_subgroup(self.filename, prefix + 'Experimental')
+            flg = _open_dpr_subgroup(self.filename, prefix + 'FLG')
+            trg = _open_dpr_subgroup(self.filename, prefix + 'TRG')
 
             #rename dims to proper names
-            bad_dims = list(ver.dims)
-            ver = ver.rename_dims({bad_dims[0]:'nscan',
-                                bad_dims[1]:'nrayNS',
-                                bad_dims[2]:'nbin',
-                                bad_dims[3]:'nfreq',
-                                bad_dims[4]:'nNP'})
-            bad_dims = list(srt.dims)
-            srt = srt.rename_dims({bad_dims[0]:'nscan',
-                                bad_dims[1]:'nrayNS',
-                                bad_dims[2]:'method',
-                                bad_dims[3]:'foreBack',
-                                bad_dims[4]:'nearFar',
-                                bad_dims[5]:'nsdew'})
-            bad_dims = list(csf.dims)
-            csf = csf.rename_dims({bad_dims[0]:'nscan',
-                                bad_dims[1]:'nrayNS',
-                                bad_dims[2]:'nfreqHI'})
-            bad_dims = list(exp.dims)
-            exp = exp.rename_dims({bad_dims[0]:'nscan',
-                                bad_dims[1]:'nrayNS',
-                                bad_dims[2]:'nbinSZP',
-                                bad_dims[3]:'nfreq'}) 
-            bad_dims = list(flg.dims)
-            flg = flg.rename_dims({bad_dims[0]:'nscan',
-                                bad_dims[1]:'nrayNS',
-                                bad_dims[2]:'nbin',
-                                bad_dims[3]:'nfreq'})       
-
-            bad_dims = list(trg.dims)
-            trg = trg.rename_dims({bad_dims[0]:'nscan',
-                                bad_dims[1]:'nrayNS',
-                                bad_dims[2]:'nslope',})     
+            ver = _rename_dims_if_needed(ver, ['nscan', 'nrayNS', 'nbin', 'nfreq', 'nNP'])
+            srt = _rename_dims_if_needed(srt, ['nscan', 'nrayNS', 'method', 'foreBack', 'nearFar', 'nsdew'])
+            csf = _rename_dims_if_needed(csf, ['nscan', 'nrayNS', 'nfreqHI'])
+            exp = _rename_dims_if_needed(exp, ['nscan', 'nrayNS', 'nbinSZP', 'nfreq'])
+            flg = _rename_dims_if_needed(flg, ['nscan', 'nrayNS', 'nbin', 'nfreq'])
+            trg = _rename_dims_if_needed(trg, ['nscan', 'nrayNS', 'nslope'])
 
             #MERGE into one ds 
             self.ds = xr.merge([geo,pre,slv,ver,srt,csf,exp,flg,tim,trg])

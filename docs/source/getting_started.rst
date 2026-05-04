@@ -70,7 +70,7 @@ Once you run that code, it will print out the file it is downloading, like this:
 
 .. code-block:: console 
 
-   Downloading: https://arthurhouhttps.pps.eosdis.nasa.gov/text/gpmdata/2022/02/20/radar/2A.GPM.DPR.V9-20211125.20220220-S003549-E020820.045337.V07A.HDF5
+   Downloading: https://arthurhouhttps.pps.eosdis.nasa.gov/gpmdata/2026/04/25/radar/2A.GPM.DPR.V10-20260310.20260425-S181549-E194902.068975.V08A.nc
 
 Note that sometimes the early day files (0000 - 0100) can end up in the previous days folder. 
 Right now I do not have it coded to search the previous day's dir, so please just adjust your date to one day prior for now.
@@ -85,7 +85,7 @@ will (lazily) load ALL modules of the hdf into an xarray dataset. It stores this
 
 .. code-block:: python
 
-   dpr = drpy.core.GPMDPR(filename=io.filename[0][-64:])
+   dpr = drpy.core.GPMDPR(filename=io.filename[0])
    dpr.ds
 
 if you are using Jupyter to do this, you might see something like this
@@ -120,7 +120,7 @@ values from the same waypoint of the near-real-time site where you got the time.
 
    center_lat = -17.489
    center_lon = 56.181
-   c  = drpy.graph.case_study(filename=io.filename[0][-64:],center_lat=center_lat,center_lon=center_lon)
+   c  = drpy.graph.case_study(filename=io.filename[0],center_lat=center_lat,center_lon=center_lon)
 
 Now that the case_study object is made, you can plot it up using the default parameters like this: 
 
