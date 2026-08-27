@@ -32,8 +32,6 @@ class case_study:
 
     import drpy 
     dpr = drpy.core.GPMDPR(filename=filename)
-    dpr.read()
-    dpr.parse_dtime()
     #if no center point is given, use middle of orbit. 
     if (center_lat is None) or (center_lon is None):
         #determine map center

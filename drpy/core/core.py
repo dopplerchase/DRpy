@@ -10,6 +10,12 @@ warnings.filterwarnings('ignore')
 
 _HDF5_MAGIC = (b'\x89HDF\r\n\x1a\n', b'\x89HDF\n\r\x1a\n')
 
+# V10 NetCDF products renamed some dimensions (e.g. nrayNS -> nray).
+_DIM_ALIASES = {
+    'nray': 'nrayNS',
+    'four': 'nslope',
+}
+
 
 def _diagnose_product_file_header(path):
     """Return a short human-readable hint about file type (for bad downloads or corrupt files)."""
@@ -83,6 +89,10 @@ def _rename_dims_if_needed(ds, target_dims):
     This avoids xarray errors when newer files already use canonical names.
     """
     rename_map = {}
+    for current in ds.dims:
+        alias = _DIM_ALIASES.get(current)
+        if alias and alias not in ds.dims:
+            rename_map[current] = alias
     current_dims = list(ds.dims)
     for idx, target in enumerate(target_dims):
         if idx >= len(current_dims):
@@ -119,7 +129,9 @@ class GPMDPR():
         self.filename = filename
         self.corners = bounding_box
         self.heavy=heavy
-        
+        self.ds = None
+        self._group_datasets = []
+
         if auto_run:
             #this reads the hdf5 file 
             self.read()
@@ -130,6 +142,31 @@ class GPMDPR():
     def xrds(self):
         """Backward-compatible alias for the merged xarray Dataset (same object as ``ds``)."""
         return self.ds
+
+    def _close_datasets(self):
+        """Close merged and per-group datasets opened by ``read()``."""
+        if self.ds is not None:
+            try:
+                self.ds.close()
+            except Exception:
+                pass
+            self.ds = None
+        for ds in self._group_datasets:
+            try:
+                ds.close()
+            except Exception:
+                pass
+        self._group_datasets = []
+
+    def close(self):
+        """Release file handles for the merged dataset and DPR subgroups."""
+        self._close_datasets()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def read(self):
         """
@@ -142,6 +179,8 @@ class GPMDPR():
         #######################################################################
         ################################ KuPR #################################
         #######################################################################
+
+        self._close_datasets()
 
         prefix = '/FS/'
         geo = _open_dpr_subgroup(self.filename, prefix)
@@ -172,25 +211,13 @@ class GPMDPR():
             flg = _rename_dims_if_needed(flg, ['nscan', 'nrayNS', 'nbin', 'nfreq'])
             trg = _rename_dims_if_needed(trg, ['nscan', 'nrayNS', 'nslope'])
 
-            #MERGE into one ds 
             self.ds = xr.merge([geo,pre,slv,ver,srt,csf,exp,flg,tim,trg])
+            # Keep subgroup datasets alive; merged arrays are lazy views into them.
+            self._group_datasets = [geo, pre, slv, tim, ver, srt, csf, exp, flg, trg]
         else:
-            #MERGE into one ds 
             self.ds = xr.merge([geo,pre,slv,tim])
-        
+            self._group_datasets = [geo, pre, slv, tim]
 
-        #close uneeded xr datasets 
-        geo.close()
-        pre.close()
-        slv.close()
-        tim.close()
-        if self.heavy: 
-          ver.close()
-          srt.close()
-          csf.close()
-          exp.close()
-          flg.close()
-        
         #set lat,lon,height as the coords to allow for easy xr slicing
         self.ds = self.ds.set_coords(['Latitude','Longitude','height'])
 
@@ -207,6 +234,9 @@ class GPMDPR():
         else:
             print('ERROR, no boxcoods set...did you mean to do this?')
     def parse_dtime(self):
+        if 'time' in self.ds.coords and 'Year' not in self.ds:
+            return
+
         year = self.ds.Year.values
         ind = np.where(year == -9999)[0]
         year = np.asarray(year,dtype=str)
